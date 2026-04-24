@@ -39,15 +39,28 @@ def calculate_performance(trades):
         "avg_rr": round(total_rr / len(trades), 2) if trades else 0
     }
 
-def run_strategy_backtest(df, scan_func, instrument, timeframe):
+def run_backtest(instrument, timeframe, data_dir=None):
     """
-    Simulate trades based on discovered signals.
+    Full backtest runner for Strategy 3 - FVA Good.
     """
-    print(f"Scanning {len(df)} candles for signals...")
-    signals = scan_func(df, instrument, timeframe)
-    print(f"Found {len(signals)} signals.")
-    trades = []
+    print(f"Starting Strategy 3 Backtest: {instrument} {timeframe}")
     
+    # 1. Load Data
+    try:
+        df = fetch_candles(instrument, timeframe, data_dir)
+        print(f"Loaded {len(df)} candles for {instrument} {timeframe}")
+    except Exception as e:
+        print(f"Error loading data: {e}")
+        return None
+        
+    # 2. Scan for Signals
+    print("Scanning for Signals...")
+    # For verification, scan last 1000 candles
+    test_df = df.tail(1000).copy()
+    signals = scan_fva_good(test_df, instrument, timeframe)
+    print(f"Found {len(signals)} signals.")
+    
+    trades = []
     for sig in signals:
         signal_dt = sig['signal_datetime']
         idx_list = df.index[df['datetime'] == signal_dt].tolist()
@@ -77,18 +90,16 @@ def run_strategy_backtest(df, scan_func, instrument, timeframe):
             outcome['candles_held'] += 1
             
             if direction == 'BULLISH':
-                # SL check
                 if curr_candle['low'] <= sl:
                     outcome['result'] = 'LOSS'
                     outcome['rr_achieved'] = -1.0
                     outcome['exit_datetime'] = curr_candle['datetime']
                     outcome['exit_price'] = sl
                     break
-                # TP 4R check
                 if curr_candle['high'] >= tp_4r:
                     outcome['result'] = 'WIN'
                     risk = abs(entry - sl)
-                    outcome['rr_achieved'] = round(abs(tp_4r - entry) / risk, 2)
+                    outcome['rr_achieved'] = round(abs(tp_4r - entry) / (risk if risk > 0 else 0.00001), 2)
                     outcome['exit_datetime'] = curr_candle['datetime']
                     outcome['exit_price'] = tp_4r
                     break
@@ -102,13 +113,12 @@ def run_strategy_backtest(df, scan_func, instrument, timeframe):
                 if curr_candle['low'] <= tp_4r:
                     outcome['result'] = 'WIN'
                     risk = abs(entry - sl)
-                    outcome['rr_achieved'] = round(abs(tp_4r - entry) / risk, 2)
+                    outcome['rr_achieved'] = round(abs(tp_4r - entry) / (risk if risk > 0 else 0.00001), 2)
                     outcome['exit_datetime'] = curr_candle['datetime']
                     outcome['exit_price'] = tp_4r
                     break
                     
         if outcome['result'] == 'PENDING':
-            # Check if it hit 2R
             hit_2r = False
             for j in range(start_idx, min(start_idx + max_lookahead, len(df))):
                 c = df.iloc[j]
@@ -125,59 +135,31 @@ def run_strategy_backtest(df, scan_func, instrument, timeframe):
         
         trades.append(outcome)
         
-    return {
+    stats = calculate_performance(trades)
+    
+    results = {
         "instrument": instrument,
         "timeframe": timeframe,
-        "total_trades": len(trades),
-        "trades": trades,
-        "stats": calculate_performance(trades)
+        "total_signals": len(trades),
+        "wins": stats['wins'],
+        "losses": stats['losses'],
+        "neutrals": stats['neutrals'],
+        "win_rate_pct": stats['win_rate_pct'],
+        "total_rr": stats['total_rr'],
+        "avg_rr": stats['avg_rr'],
+        "trades": trades
     }
+    return results
 
 def main():
     instrument = "EURUSD"
     timeframe = "1H"
-    
-    print(f"Starting Strategy 3 (Good FVA) Backtest: {instrument} {timeframe}")
-    
-    try:
-        df = fetch_candles(instrument, timeframe)
-        if df is None or df.empty:
-            print("Failed to load data.")
-            return
-
-        # Verification sample
-        df_sample = df.tail(1000).copy()
-        
-        results = run_strategy_backtest(df_sample, scan_fva_good, instrument, timeframe)
-        
-        # Extra stats
-        if results['total_trades'] > 0:
-            cs_dist = {}
-            fvg_dist = {'PFVG': 0, 'BFVG': 0}
-            
-            for t in results['trades']:
-                cs_key = f"{t['candle_science_bias']}_{t['candle_science_confidence']}"
-                cs_dist[cs_key] = cs_dist.get(cs_key, 0) + 1
-                fvg_type = t['overlapping_fvg_type']
-                if fvg_type in fvg_dist:
-                    fvg_dist[fvg_type] += 1
-            
-            results['stats']['candle_science_distribution'] = cs_dist
-            results['stats']['bfvg_vs_pfvg_count'] = fvg_dist
-            
-        results['note'] = "Good FVA has 2 probability arrays. Expected lower WR than Ideal (3 arrays)."
-
-        output_dir = "mmc_backtest/backtest/results"
-        os.makedirs(output_dir, exist_ok=True)
-        
-        output_file = os.path.join(output_dir, "s3_EURUSD_1H.json")
-        with open(output_file, "w") as f:
-            json.dump(results, f, indent=4, default=str)
-            
-        print(f"Results saved to: {output_file}")
-        print(f"Total Trades: {results['total_trades']} | Win Rate: {results['stats']['win_rate_pct']}%")
-    except Exception as e:
-        print(f"Error in backtest: {e}")
+    res = run_backtest(instrument, timeframe)
+    if res:
+        print(f"Results: {res['total_signals']} trades | WR: {res['win_rate_pct']}%")
+        os.makedirs("mmc_backtest/backtest/results", exist_ok=True)
+        with open("mmc_backtest/backtest/results/s3_EURUSD_1H.json", "w") as f:
+            json.dump(res, f, indent=4, default=str)
 
 if __name__ == "__main__":
     main()

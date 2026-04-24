@@ -7,15 +7,16 @@ from datetime import datetime
 DEFAULT_DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'data', 'raw')
 
 # Timeframe mapping from Arjo prompt
+# Timeframe mapping to minute-based suffix for filenames
 TIMEFRAME_MAP = {
-    'DAILY':   ['D1', '1440'],
-    '4H':      ['H4', '240'],
-    '1H':      ['H1', '60'],
-    '15M':     ['M15', '15'],
-    '5M':      ['M5', '5'],
-    '1M':      ['M1', '1'],
-    'WEEKLY':  ['W1'],
-    'MONTHLY': ['MN1']
+    'DAILY':   '1440',
+    '4H':      '240',
+    '1H':      '60',
+    '15M':     '15',
+    '5M':      '5',
+    '1M':      '1',
+    'WEEKLY':  '10080',
+    'MONTHLY': '43200'
 }
 
 def load_csv(filepath: str) -> pd.DataFrame:
@@ -117,7 +118,7 @@ def get_available_data(data_dir: str = None) -> dict:
 def fetch_candles(instrument: str, timeframe: str, data_dir: str = None) -> pd.DataFrame:
     """
     Load data for instrument + timeframe.
-    Timeframe to filename mapping included for D1/H4 and 1440/240 conventions.
+    Filename format: {INSTRUMENT}{MINUTES}.csv
     """
     if data_dir is None:
         data_dir = DEFAULT_DATA_DIR
@@ -125,34 +126,19 @@ def fetch_candles(instrument: str, timeframe: str, data_dir: str = None) -> pd.D
     if timeframe not in TIMEFRAME_MAP:
         raise ValueError(f"Unsupported timeframe: {timeframe}. Use: {list(TIMEFRAME_MAP.keys())}")
 
-    possible_tf_suffixes = TIMEFRAME_MAP[timeframe]
+    suffix = TIMEFRAME_MAP[timeframe]
+    filepath = os.path.join(data_dir, f"{instrument}{suffix}.csv")
     
-    found_file = None
-    tried_paths = []
+    if not os.path.exists(filepath):
+        # Try a fallback with underscore just in case, but prioritize direct
+        alt_path = os.path.join(data_dir, f"{instrument}_{suffix}.csv")
+        if os.path.exists(alt_path):
+            filepath = alt_path
+        else:
+            raise FileNotFoundError(f"No data found for {instrument} {timeframe} at {filepath}")
 
-    for suffix in possible_tf_suffixes:
-        # Try underscore version first: EURUSD_D1.csv
-        path1 = os.path.join(data_dir, f"{instrument}_{suffix}.csv")
-        # Try direct version: EURUSD1440.csv
-        path2 = os.path.join(data_dir, f"{instrument}{suffix}.csv")
-        
-        if os.path.exists(path1):
-            found_file = path1
-            break
-        if os.path.exists(path2):
-            found_file = path2
-            break
-        
-        tried_paths.extend([path1, path2])
-
-    if not found_file:
-        error_msg = f"No data found for {instrument} {timeframe}.\nChecked files:\n"
-        for p in tried_paths:
-            error_msg += f" - {p}\n"
-        raise FileNotFoundError(error_msg)
-
-    print(f"Loading data from: {os.path.basename(found_file)}")
-    return load_csv(found_file)
+    print(f"Loading data from: {os.path.basename(filepath)}")
+    return load_csv(filepath)
 
 if __name__ == "__main__":
     # Test block

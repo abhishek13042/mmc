@@ -7,10 +7,10 @@ venv/
 ENV/
 
 # Data Files (Excluding large CSVs to keep repo light)
-# data/*.csv
-# results/*.csv
-# results/*.json
-# results/*.png
+data/raw/*.csv
+backtest/results/*.csv
+backtest/results/*.json
+backtest/results/*.png
 
 # VS Code / IDE
 .vscode/

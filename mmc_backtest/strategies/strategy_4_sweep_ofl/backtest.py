@@ -39,12 +39,29 @@ def calculate_performance(trades):
         "avg_rr": round(total_rr / len(trades), 2) if trades else 0
     }
 
-def run_strategy_backtest(df, scan_func, instrument, timeframe):
-    print(f"Scanning {len(df)} candles for signals...")
-    signals = scan_func(df, instrument, timeframe)
-    print(f"Found {len(signals)} signals.")
-    trades = []
+def run_backtest(instrument, timeframe, data_dir=None):
+    """
+    Full backtest runner for Strategy 4 - Sweep + OFL.
+    """
+    print(f"Starting Strategy 4 Backtest: {instrument} {timeframe}")
     
+    # 1. Load Data
+    try:
+        from mmc_backtest.backtest.data_loader import fetch_candles
+        df = fetch_candles(instrument, timeframe, data_dir)
+        print(f"Loaded {len(df)} candles for {instrument} {timeframe}")
+    except Exception as e:
+        print(f"Error loading data: {e}")
+        return None
+        
+    # 2. Scan for Signals
+    print("Scanning for Signals...")
+    # For verification, scan last 1000 candles
+    test_df = df.tail(1000).copy()
+    signals = scan_sweep_ofl(test_df, instrument, timeframe)
+    print(f"Found {len(signals)} signals.")
+    
+    trades = []
     for sig in signals:
         signal_dt = sig['signal_datetime']
         idx_list = df.index[df['datetime'] == signal_dt].tolist()
@@ -79,7 +96,7 @@ def run_strategy_backtest(df, scan_func, instrument, timeframe):
                 if curr_candle['high'] >= tp_4r:
                     outcome['result'] = 'WIN'
                     risk = abs(entry - sl)
-                    outcome['rr_achieved'] = round(abs(tp_4r - entry) / risk, 2)
+                    outcome['rr_achieved'] = round(abs(tp_4r - entry) / (risk if risk > 0 else 0.00001), 2)
                     outcome['exit_datetime'] = curr_candle['datetime']; outcome['exit_price'] = tp_4r
                     break
             else: # BEARISH
@@ -90,7 +107,7 @@ def run_strategy_backtest(df, scan_func, instrument, timeframe):
                 if curr_candle['low'] <= tp_4r:
                     outcome['result'] = 'WIN'
                     risk = abs(entry - sl)
-                    outcome['rr_achieved'] = round(abs(tp_4r - entry) / risk, 2)
+                    outcome['rr_achieved'] = round(abs(tp_4r - entry) / (risk if risk > 0 else 0.00001), 2)
                     outcome['exit_datetime'] = curr_candle['datetime']; outcome['exit_price'] = tp_4r
                     break
                     
@@ -108,49 +125,30 @@ def run_strategy_backtest(df, scan_func, instrument, timeframe):
         
         trades.append(outcome)
         
-    return {
+    stats = calculate_performance(trades)
+    
+    results = {
         "instrument": instrument,
         "timeframe": timeframe,
-        "total_trades": len(trades),
-        "trades": trades,
-        "stats": calculate_performance(trades)
+        "total_signals": len(trades),
+        "wins": stats['wins'],
+        "losses": stats['losses'],
+        "neutrals": stats['neutrals'],
+        "win_rate_pct": stats['win_rate_pct'],
+        "total_rr": stats['total_rr'],
+        "avg_rr": stats['avg_rr'],
+        "trades": trades
     }
+    return results
 
 def main():
     instrument = "EURUSD"; timeframe = "1H"
-    print(f"Starting Strategy 4 (Sweep+OFL) Backtest: {instrument} {timeframe}")
-    
-    try:
-        df = fetch_candles(instrument, timeframe)
-        if df is None or df.empty: return
-        
-        # Test sample
-        df_sample = df.tail(1000).copy()
-        results = run_strategy_backtest(df_sample, scan_sweep_ofl, instrument, timeframe)
-        
-        # Extra stats
-        if results['total_trades'] > 0:
-            wicks = [t['sweep_wick_pips'] for t in results['trades']]
-            results['stats']['avg_sweep_wick_pips'] = round(sum(wicks) / len(wicks), 2)
-            
-            pfvg = len([t for t in results['trades'] if t['continuation_fvg_type'] == 'PFVG'])
-            bfvg = len([t for t in results['trades'] if t['continuation_fvg_type'] == 'BFVG'])
-            results['stats']['pfvg_signals'] = pfvg
-            results['stats']['bfvg_signals'] = bfvg
-            
-            imm_rev = len([t for t in results['trades'] if t['comfortable_candles'] == 0])
-            results['stats']['pct_immediate_reversals'] = round((imm_rev / results['total_trades'] * 100), 2)
-            
-        output_dir = "mmc_backtest/backtest/results"
-        os.makedirs(output_dir, exist_ok=True)
-        output_file = os.path.join(output_dir, "s4_EURUSD_1H.json")
-        with open(output_file, "w") as f:
-            json.dump(results, f, indent=4, default=str)
-            
-        print(f"Results saved to: {output_file}")
-        print(f"Total Trades: {results['total_trades']} | Win Rate: {results['stats']['win_rate_pct']}%")
-    except Exception as e:
-        print(f"Error in backtest: {e}")
+    res = run_backtest(instrument, timeframe)
+    if res:
+        print(f"Results: {res['total_signals']} trades | WR: {res['win_rate_pct']}%")
+        os.makedirs("mmc_backtest/backtest/results", exist_ok=True)
+        with open("mmc_backtest/backtest/results/s4_EURUSD_1H.json", "w") as f:
+            json.dump(res, f, indent=4, default=str)
 
 if __name__ == "__main__":
     main()
