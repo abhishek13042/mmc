@@ -95,7 +95,11 @@ def run_backtest(instrument, context_tf, entry_tf, data_dir=None) -> dict:
         sig['exit_time'] = str(exit_time) if exit_time else None
         results.append(sig)
 
-    wins = [r for r in results if r['outcome'] == 'WIN']
+    wins_list = [r for r in results if r['outcome'] == 'WIN']
+    losses_list = [r for r in results if r['outcome'] == 'LOSS']
+    neutrals_count = total_signals - len(wins_list) - len(losses_list)
+    
+    total_rr = sum([2.0 if r['outcome'] == 'WIN' else (-1.0 if r['outcome'] == 'LOSS' else 0.0) for r in results])
     
     # Extra stats
     fully_passed = [s for s in signals if not s['checklist_failed_items'] and not s['checklist_warn_items']]
@@ -103,17 +107,18 @@ def run_backtest(instrument, context_tf, entry_tf, data_dir=None) -> dict:
     
     summary = {
         'instrument': instrument,
-        'context_tf': context_tf,
-        'entry_tf': entry_tf,
+        'timeframe': f"{context_tf}/{entry_tf}",
+        'strategy': 'ORDER_FLOW_ENTRY',
         'total_signals': total_signals,
-        'wins': len(wins),
-        'losses': len([r for r in results if r['outcome'] == 'LOSS']),
-        'win_rate_pct': round(len(wins) / total_signals * 100, 2) if total_signals > 0 else 0,
+        'wins': len(wins_list),
+        'losses': len(losses_list),
+        'neutrals': neutrals_count,
+        'win_rate_pct': round(len(wins_list) / total_signals * 100, 2) if total_signals > 0 else 0,
+        'avg_rr': round(total_rr / total_signals, 2) if total_signals > 0 else 0,
+        'total_rr': round(total_rr, 2),
         'fully_checklist_passed_pct': round(len(fully_passed) / total_signals * 100, 2) if total_signals > 0 else 0,
         'most_common_checklist_fail': most_common_fail,
         'ofl_probability_breakdown': dict(Counter(ofl_prob_pairs)),
-        'context_target_hit_pct': round(len([w for w in wins if w['win_type'] == 'CONTEXT']) / len(wins) * 100, 2) if wins else 0,
-        'tp2r_hit_pct': round(len([w for w in wins if w['win_type'] == 'TP2R']) / len(wins) * 100, 2) if wins else 0,
         'trades': results
     }
     

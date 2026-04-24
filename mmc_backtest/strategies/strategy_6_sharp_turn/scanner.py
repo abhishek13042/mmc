@@ -84,8 +84,8 @@ def scan_sharp_turn(df_context_tf, df_entry_tf, instrument, context_tf, entry_tf
                         entered = True
                 
                 if entered:
-                    # Look for FVG_OUT within 1-3 candles
-                    for k in range(1, 4):
+                    # Look for FVG_OUT (removed hard 3-candle limit)
+                    for k in range(1, 21):
                         if j + k + 1 >= len(df_entry_tf): break
                         
                         target_time = df_entry_tf.iloc[j+k+1]['datetime']
@@ -99,6 +99,21 @@ def scan_sharp_turn(df_context_tf, df_entry_tf, instrument, context_tf, entry_tf
                         
                         if not fvg_out: continue
                         
+                        # Speed quality scoring
+                        candles_to_form = k
+                        if candles_to_form <= 2:
+                            speed_quality = 'FAST'
+                            speed_score = 3
+                        elif candles_to_form <= 5:
+                            speed_quality = 'MEDIUM'
+                            speed_score = 2
+                        elif candles_to_form <= 10:
+                            speed_quality = 'SLOW'
+                            speed_score = 1
+                        else:
+                            speed_quality = 'VERY_SLOW'
+                            speed_score = 0
+
                         # OFL Check
                         recent_ofl = None
                         for o in ltf_ofls:
@@ -109,7 +124,7 @@ def scan_sharp_turn(df_context_tf, df_entry_tf, instrument, context_tf, entry_tf
                         if not recent_ofl or recent_ofl['probability_label'] not in ['HIGH', 'MEDIUM']:
                             continue
                             
-                        # ENTRY PRICE and SL
+                        # ENTRY PRICE and SL (No buffer)
                         entry_price = fvg_out['fvg_low'] if direction == 'BULLISH' else fvg_out['fvg_high']
                         stop_loss = recent_ofl['swing_point_price']
                         risk = abs(entry_price - stop_loss)
@@ -139,7 +154,9 @@ def scan_sharp_turn(df_context_tf, df_entry_tf, instrument, context_tf, entry_tf
                             'fvg_out_high': float(fvg_out['fvg_high']),
                             'fvg_out_low': float(fvg_out['fvg_low']),
                             'fvg_out_type': fvg_out['fvg_type'],
-                            'candles_to_form_fvg_out': k,
+                            'candles_to_form_fvg_out': candles_to_form,
+                            'speed_quality': speed_quality,
+                            'speed_score': speed_score,
                             'context_target': float(context_target),
                             'context_target_type': ctx['target_type'],
                             'ofl_swing': float(recent_ofl['swing_point_price']),

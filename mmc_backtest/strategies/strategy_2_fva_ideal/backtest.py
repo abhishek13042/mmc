@@ -31,9 +31,10 @@ def run_backtest(instrument, timeframe, data_dir=None):
         
     # 2. Scan for Signals
     print("Scanning for Signals...")
-    # For verification, only scan last 1000 candles
-    test_df = df.tail(1000).copy()
-    signals = scan_fva_ideal(test_df, instrument, timeframe)
+    # Minimum window for scan: 50 candles (to establish context)
+    # Start scanning from candle index 50 onward
+    # Use df.iloc[:i] for walk-forward simulation (no lookahead)
+    signals = scan_fva_ideal(df, instrument, timeframe)
     print(f"Found {len(signals)} signals.")
     
     if not signals:

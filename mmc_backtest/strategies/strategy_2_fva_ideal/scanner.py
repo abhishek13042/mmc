@@ -128,7 +128,7 @@ def scan_fva_ideal(df, instrument, timeframe):
                         break
                 entry_price = overlap_fvg['fvg_low'] if overlap_fvg else fva_low
             
-            stop_loss = fva_low - buffer
+            stop_loss = current_ofl['swing_point_price']
             structural_target = recent_it_high['price_level']
         else:
             entry_price = fva['nested_fva_high']
@@ -140,7 +140,7 @@ def scan_fva_ideal(df, instrument, timeframe):
                         break
                 entry_price = overlap_fvg['fvg_high'] if overlap_fvg else fva_high
                 
-            stop_loss = fva_high + buffer
+            stop_loss = current_ofl['swing_point_price']
             structural_target = recent_it_low['price_level']
             
         risk = abs(entry_price - stop_loss)

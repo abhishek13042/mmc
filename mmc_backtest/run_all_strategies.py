@@ -37,6 +37,8 @@ DATA_DIR    = MMC_ROOT / 'data' / 'raw'
 RESULTS_DIR = MMC_ROOT / 'backtest' / 'results'
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
+ALL_BATCH_RESULTS = []
+
 INSTRUMENTS = ['EURUSD', 'GBPUSD', 'XAUUSD']
 
 # Maps timeframe argument strings → actual filename suffix (minute-based naming)
@@ -60,6 +62,8 @@ STRATEGY_REGISTRY = {
     5: {'name': 'CANDLE_SCIENCE',    'short': 'candle',    'module_path': 'strategies.strategy_5_candle_science.backtest',         'fn_name': 'run_backtest', 'fn': None, 'import_ok': False, 'import_err': ''},
     6: {'name': 'SHARP_TURN',        'short': 'sharp',     'module_path': 'strategies.strategy_6_sharp_turn.backtest',             'fn_name': 'run_backtest', 'fn': None, 'import_ok': False, 'import_err': ''},
     7: {'name': 'ORDER_FLOW_ENTRY',  'short': 'oflow',     'module_path': 'strategies.strategy_7_order_flow_entry.backtest',       'fn_name': 'run_backtest', 'fn': None, 'import_ok': False, 'import_err': ''},
+    8: {'name': 'IT_RETRACEMENT',    'short': 'itretrace', 'module_path': 'strategies.strategy_8_it_retracement.backtest',         'fn_name': 'run_backtest', 'fn': None, 'import_ok': False, 'import_err': ''},
+    9: {'name': 'PCH_PCL_SWEEP',     'short': 'pchsweep',  'module_path': 'strategies.strategy_9_pch_pcl_sweep.backtest',          'fn_name': 'run_backtest', 'fn': None, 'import_ok': False, 'import_err': ''},
 }
 
 def import_all_strategies():
@@ -109,6 +113,7 @@ def verify_all_data():
         '5M'  : 'M5   (5min)',
     }
     missing = []
+    print(f"  Checking for 15 required data files...")
     for inst in INSTRUMENTS:
         print(f"\n  {inst}:")
         for tf in all_tf:
@@ -166,10 +171,31 @@ def trades_to_csv(trades, run_label, strategy, instrument, timeframe, output_pat
 
 def append_to_master_summary(row_dict):
     file_exists = MASTER_SUMMARY_PATH.exists()
-    with open(MASTER_SUMMARY_PATH, 'a', newline='', encoding='utf-8') as f:
+    rows = []
+    if file_exists:
+        with open(MASTER_SUMMARY_PATH, 'r', newline='', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+    
+    # DEDUP: strategy + instrument + timeframe
+    new_rows = []
+    found = False
+    for r in rows:
+        if r['strategy'] == row_dict['strategy'] and \
+           r['instrument'] == row_dict['instrument'] and \
+           r['timeframe'] == row_dict['timeframe']:
+            new_rows.append(row_dict)
+            found = True
+        else:
+            new_rows.append(r)
+    
+    if not found:
+        new_rows.append(row_dict)
+    
+    with open(MASTER_SUMMARY_PATH, 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=SUMMARY_CSV_COLUMNS, extrasaction='ignore')
-        if not file_exists: writer.writeheader()
-        writer.writerow(row_dict)
+        writer.writeheader()
+        writer.writerows(new_rows)
 
 def _build_summary_row(strategy_num, strategy_name, instrument, timeframe,
     label, status, output_csv_name, total_signals=0, wins=0, losses=0,
@@ -205,15 +231,17 @@ def run_one(strategy_num, label, instrument, timeframe_label, output_csv_name, c
             print("    [ERROR] No result returned from backtest function")
             return
 
-        # Handle both flat results and nested 'stats' results (older strategy versions)
-        stats = result.get('stats', {})
-        total    = result.get('total_signals', stats.get('total_signals', 0))
-        wins     = result.get('wins', stats.get('wins', 0))
-        losses   = result.get('losses', stats.get('losses', 0))
-        neutrals = result.get('neutrals', stats.get('neutrals', 0))
-        wr       = result.get('win_rate_pct', stats.get('win_rate_pct', 0.0))
-        avg_rr   = result.get('avg_rr', stats.get('avg_rr', 0.0))
-        tot_rr   = result.get('total_rr', stats.get('total_rr', 0.0))
+        # Handle both flat results and nested 'stats' results
+        if 'stats' in result:
+            result.update(result.pop('stats'))
+            
+        total    = result.get('total_signals', 0)
+        wins     = result.get('wins', 0)
+        losses   = result.get('losses', 0)
+        neutrals = result.get('neutrals', 0)
+        wr       = result.get('win_rate_pct', 0.0)
+        avg_rr   = result.get('avg_rr', 0.0)
+        tot_rr   = result.get('total_rr', 0.0)
         trades   = result.get('trades', [])
 
         print(f"    [OK] Signals:{total} | Wins:{wins} | Losses:{losses} | WR:{wr:.1f}% | AvgRR:{avg_rr:.2f}")
@@ -233,6 +261,7 @@ def run_one(strategy_num, label, instrument, timeframe_label, output_csv_name, c
 
     append_to_master_summary(row)
     all_summary_rows.append(row)
+    ALL_BATCH_RESULTS.append(result)
 
 def _skip(num, name, inst, tf_label, label, out_name, path):
     print(f"\n  > {label}")
@@ -307,6 +336,24 @@ def run_strategy_7():
             if not ok_c or not ok_e: _skip(7,'ORDER_FLOW_ENTRY',inst,tf_label,label,out,pc if not ok_c else pe); continue
             run_one(7, label, inst, tf_label, out, {'instrument': inst, 'context_tf': ctx_arg, 'entry_tf': ent_arg})
 
+def run_strategy_8():
+    print("\n" + "="*70); print("STRATEGY 8 — IT Retracement  [9 runs]"); print("="*70)
+    for tf_arg, tf_f in [('4H','H4'),('1H','H1'),('15M','M15')]:
+        for inst in INSTRUMENTS:
+            ok, path = data_file_exists(inst, tf_arg)
+            label, out = f"S8 | {inst} | {tf_f}", f"s8_itretrace_{inst}_{tf_f}.csv"
+            if not ok: _skip(8,'IT_RETRACEMENT',inst,tf_f,label,out,path); continue
+            run_one(8, label, inst, tf_f, out, {'instrument': inst, 'timeframe': tf_arg})
+
+def run_strategy_9():
+    print("\n" + "="*70); print("STRATEGY 9 — PCH/PCL Sweep  [9 runs]"); print("="*70)
+    for tf_arg, tf_f in [('1H','H1'),('15M','M15'),('5M','M5')]:
+        for inst in INSTRUMENTS:
+            ok, path = data_file_exists(inst, tf_arg)
+            label, out = f"S9 | {inst} | {tf_f}", f"s9_pchsweep_{inst}_{tf_f}.csv"
+            if not ok: _skip(9,'PCH_PCL_SWEEP',inst,tf_f,label,out,path); continue
+            run_one(9, label, inst, tf_f, out, {'instrument': inst, 'timeframe': tf_arg})
+
 def write_best_performers():
     best = {}
     for row in all_summary_rows:
@@ -322,6 +369,58 @@ def write_best_performers():
         writer.writeheader()
         for row in best.values(): writer.writerow(row)
     return best
+
+def run_strategy_10():
+    """
+    Apply the Filtering Process to all signals collected
+    from S1-S9 in this batch run.
+    """
+    from mmc_backtest.strategies.strategy_10_filtering_process import argument_scorer, filter_overlay, backtest as s10
+    import pandas as pd
+    
+    print("\n" + "="*70)
+    print("STRATEGY 10 — FILTERING PROCESS ANALYSIS")
+    print("="*70)
+
+    # Step 1: Score and rank all instruments
+    rankings = argument_scorer.rank_instruments(INSTRUMENTS, str(DATA_DIR))
+    print("\nINSTRUMENT RANKINGS:")
+    for r in rankings:
+        print(f"  #{r['rank']} {r['instrument']}: {r['bias_direction']} ({r['bias_strength']}) | Bull={r['bullish_score']} Bear={r['bearish_score']}")
+        print(f"     → {r['recommendation']}")
+
+    # Step 2: Collect ALL signals from ALL strategies this run
+    all_signals = []
+    for result in ALL_BATCH_RESULTS:
+        if isinstance(result, dict) and 'trades' in result:
+            all_signals.extend(result['trades'])
+
+    if not all_signals:
+        print("\n[WARNING] No signals found to filter. Run S1-S9 first.")
+        return
+
+    # Step 3: Apply filter
+    filter_result = filter_overlay.apply_filter_to_signals(all_signals, str(DATA_DIR))
+
+    print(f"\nFILTER RESULT:")
+    print(f"  Total signals: {filter_result['filter_stats']['total_signals']}")
+    print(f"  Accepted:      {filter_result['filter_stats']['accepted_count']}")
+    print(f"  Rejected:      {filter_result['filter_stats']['rejected_count']}")
+    print(f"  Acceptance Rate: {filter_result['filter_stats']['acceptance_rate_pct']}%")
+
+    # Step 4: Compare before vs after
+    comparison = s10.run_comparison_backtest(all_signals, filter_result['accepted'])
+
+    # Step 5: Save rankings to CSV
+    rankings_df = pd.DataFrame(rankings)
+    rankings_df.to_csv(RESULTS_DIR / 'FILTERING_PROCESS_RANKINGS.csv', index=False)
+
+    # Step 6: Save comparison to CSV
+    comp_df = pd.DataFrame([comparison])
+    comp_df.to_csv(RESULTS_DIR / 'FILTERING_PROCESS_COMPARISON.csv', index=False)
+
+    print(f"\n[SAVED] {RESULTS_DIR / 'FILTERING_PROCESS_RANKINGS.csv'}")
+    print(f"[SAVED] {RESULTS_DIR / 'FILTERING_PROCESS_COMPARISON.csv'}")
 
 def print_final_summary(best):
     total  = len(all_summary_rows)
@@ -355,8 +454,9 @@ if __name__ == '__main__':
     print(f"  Root   : {MMC_ROOT}")
     print("="*70)
 
-    if MASTER_SUMMARY_PATH.exists():
-        MASTER_SUMMARY_PATH.unlink()
+    # Master Summary persistence with dedup handled in append_to_master_summary
+    # if MASTER_SUMMARY_PATH.exists():
+    #     MASTER_SUMMARY_PATH.unlink()
 
     import_all_strategies()
     verify_all_data()
@@ -368,8 +468,18 @@ if __name__ == '__main__':
     run_strategy_5()
     run_strategy_6()
     run_strategy_7()
+    run_strategy_8()
+    run_strategy_9()
 
     best    = write_best_performers()
+    
+    # Run Filtering Process (Strategy 10)
+    try:
+        run_strategy_10()
+    except Exception as e:
+        print(f"\n[ERROR] Strategy 10 failed: {e}")
+        traceback.print_exc()
+
     elapsed = (datetime.now() - start).total_seconds()
     print(f"\n  Total runtime: {elapsed:.1f}s ({elapsed/60:.1f} min)")
     print_final_summary(best)

@@ -99,12 +99,9 @@ def scan_fva_good(df, instrument, timeframe):
         if not overlap_fvg or overlap_fvg['fvg_type'] not in ['PFVG', 'BFVG']:
             continue
             
-        # 5. Check Candle Science Bias (HARD requirement)
+        # 5. Check Candle Science Bias (OPTIONAL)
         cs_bias = get_candle_science_bias(instrument, current_time)
-        if cs_bias['overall_bias'] != trend:
-            continue
-        if cs_bias['bias_confidence'] not in ['HIGH', 'MEDIUM']:
-            continue
+        # Store for info, but do not reject trade based on this
 
         # 6. Price at Overlap Zone
         fvg_low = overlap_fvg['fvg_low']
@@ -135,7 +132,6 @@ def scan_fva_good(df, instrument, timeframe):
             
         latest_ofl = matching_ofls[-1]
         sl = latest_ofl['swing_point_price']
-        sl = sl - buffer if trend == "BULLISH" else sl + buffer
         
         # Risk and TP
         risk = abs(entry - sl)

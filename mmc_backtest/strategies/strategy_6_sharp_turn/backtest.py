@@ -103,29 +103,39 @@ def run_backtest(instrument, context_tf, entry_tf, data_dir=None) -> dict:
         results.append(sig)
         candles_to_form_list.append(sig['candles_to_form_fvg_out'])
         
-    wins = [r for r in results if r['outcome'] == 'WIN']
-    losses = [r for r in results if r['outcome'] == 'LOSS']
+    # Calculate Stats by Speed Quality
+    speed_stats = {}
+    for sq in ['FAST', 'MEDIUM', 'SLOW', 'VERY_SLOW']:
+        bucket = [r for r in results if r.get('speed_quality') == sq]
+        if not bucket:
+            speed_stats[sq] = {'total': 0, 'wins': 0, 'win_rate': 0.0}
+            continue
+        b_wins = [r for r in bucket if r['outcome'] == 'WIN']
+        speed_stats[sq] = {
+            'total': len(bucket),
+            'wins': len(b_wins),
+            'win_rate': round(len(b_wins) / len(bucket) * 100, 2)
+        }
+
+    wins_list = [r for r in results if r['outcome'] == 'WIN']
+    losses_list = [r for r in results if r['outcome'] == 'LOSS']
     
-    win_rate = (len(wins) / total_signals * 100) if total_signals > 0 else 0
-    
-    context_hits = [w for w in wins if w['win_type'] == 'CONTEXT']
-    tp2r_hits = [w for w in wins if w['win_type'] == 'TP2R']
-    
-    context_hit_pct = (len(context_hits) / len(wins) * 100) if wins else 0
-    tp2r_hit_pct = (len(tp2r_hits) / len(wins) * 100) if wins else 0
+    win_rate = (len(wins_list) / total_signals * 100) if total_signals > 0 else 0
+    total_rr = sum([2.0 if r['outcome'] == 'WIN' else (-1.0 if r['outcome'] == 'LOSS' else 0.0) for r in results])
     
     summary = {
         'instrument': instrument,
-        'context_tf': context_tf,
-        'entry_tf': entry_tf,
+        'timeframe': f"{context_tf}/{entry_tf}",
+        'strategy': 'SHARP_TURN',
         'total_signals': total_signals,
-        'wins': len(wins),
-        'losses': len(losses),
-        'neutrals': total_signals - len(wins) - len(losses),
+        'wins': len(wins_list),
+        'losses': len(losses_list),
+        'neutrals': total_signals - len(wins_list) - len(losses_list),
         'win_rate_pct': round(win_rate, 2),
-        'avg_candles_to_form_fvg_out': round(float(np.mean(candles_to_form_list)), 2) if candles_to_form_list else 0,
-        'context_target_hit_pct': round(context_hit_pct, 2),
-        'tp2r_hit_pct': round(tp2r_hit_pct, 2),
+        'avg_rr': round(total_rr / total_signals, 2) if total_signals > 0 else 0,
+        'total_rr': round(total_rr, 2),
+        'avg_candles_to_fvg_out': round(float(np.mean(candles_to_form_list)), 2) if candles_to_form_list else 0,
+        'win_rate_by_speed': speed_stats,
         'trades': results
     }
     

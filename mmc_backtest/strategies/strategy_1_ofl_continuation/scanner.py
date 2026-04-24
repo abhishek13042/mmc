@@ -114,12 +114,12 @@ def scan_ofl_continuation(df, instrument, timeframe):
         if ofl_dir == 'BULLISH':
             if curr_close >= equilibrium: continue 
             entry_price = target_fvg['fvg_low']
-            stop_loss = current_ofl['swing_point_price'] - buffer_price
+            stop_loss = current_ofl['swing_point_price']
             erl_target = recent_it_high['price_level'] 
         else:
             if curr_close <= equilibrium: continue 
             entry_price = target_fvg['fvg_high']
-            stop_loss = current_ofl['swing_point_price'] + buffer_price
+            stop_loss = current_ofl['swing_point_price']
             erl_target = recent_it_low['price_level']
 
         # Filter B: Room to Move (Min RR to ERL)

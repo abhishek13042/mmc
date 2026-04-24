@@ -96,9 +96,8 @@ def scan_sweep_ofl(df, instrument, timeframe):
         # BEARISH sweep: entry = continuation_fvg['fvg_high']
         entry_price = cont_fvg['fvg_low'] if direction == 'BULLISH' else cont_fvg['fvg_high']
         
-        # STOP LOSS
-        # Swept swing level +/- buffer
-        sl = swept_level - buffer if direction == 'BULLISH' else swept_level + buffer
+        # STOP LOSS: most recent OFL swing point price
+        sl = matching_ofls[-1]['swing_point_price']
         
         risk = abs(entry_price - sl)
         if risk <= 0: continue

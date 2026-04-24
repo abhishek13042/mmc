@@ -12,7 +12,36 @@ if MMC_DIR not in sys.path: sys.path.insert(0, MMC_DIR)
 from modules.data_engine import fetch_candles
 from modules.video1_pd_arrays import scan_candles_for_fvgs, get_pip_multiplier
 from modules.video3_4_order_flow import scan_candles_for_ofls
-from modules.video5_candle_science import analyze_single_candle, get_candle_science_bias
+from modules.video5_candle_science import get_candle_science_bias
+
+def analyze_candle_visual(candle):
+    """
+    Arjo's Visual Candle Definitions (Video 5)
+    30% and 35% thresholds represent 'small' and 'large' wicks.
+    """
+    open_p, high_p, low_p, close_p = candle['open'], candle['high'], candle['low'], candle['close']
+    total_range = high_p - low_p
+    if total_range == 0: return {'type': 'NEUTRAL', 'next': 'NEUTRAL'}
+    
+    upper_wick = high_p - max(open_p, close_p)
+    lower_wick = min(open_p, close_p) - low_p
+    upper_wick_ratio = upper_wick / total_range
+    lower_wick_ratio = lower_wick / total_range
+    direction = 'UP' if close_p > open_p else 'DOWN'
+    
+    # DISRESPECT (Small wick at top/bottom)
+    if direction == 'UP' and upper_wick_ratio < lower_wick_ratio and upper_wick_ratio < 0.30:
+        return {'type': 'DISRESPECT_BULLISH', 'next': 'CONTINUE_HIGHER'}
+    if direction == 'DOWN' and lower_wick_ratio < upper_wick_ratio and lower_wick_ratio < 0.30:
+        return {'type': 'DISRESPECT_BEARISH', 'next': 'CONTINUE_LOWER'}
+        
+    # RESPECT (Long wick at top/bottom)
+    if lower_wick_ratio >= 0.35:
+        return {'type': 'RESPECT_BULLISH', 'next': 'CONTINUE_HIGHER'}
+    if upper_wick_ratio >= 0.35:
+        return {'type': 'RESPECT_BEARISH', 'next': 'CONTINUE_LOWER'}
+        
+    return {'type': 'NEUTRAL', 'next': 'NEUTRAL'}
 
 def scan_candle_science(df_htf, df_ltf, instrument, htf, ltf):
     """
@@ -38,12 +67,12 @@ def scan_candle_science(df_htf, df_ltf, instrument, htf, ltf):
         htf_candle = df_htf.iloc[i-1]
         htf_datetime = htf_candle['datetime']
         
-        # 1. Condition 1: HTF Candle Science Signal
-        analysis = analyze_single_candle(instrument, htf, htf_candle)
-        if analysis['candle_type'] == 'NEUTRAL' or analysis['confidence_score'] < 60.0:
+        # 1. Condition 1: HTF Candle Science Signal (Visual)
+        analysis = analyze_candle_visual(htf_candle)
+        if analysis['type'] == 'NEUTRAL':
             continue
             
-        direction = 'BULLISH' if analysis['expected_next'] == 'CONTINUE_HIGHER' else 'BEARISH'
+        direction = 'BULLISH' if analysis['next'] == 'CONTINUE_HIGHER' else 'BEARISH'
         
         # 2. Condition 2: 3-TF Bias Aligns
         # Note: we use the datetime of the HTF candle for the bias check context
@@ -80,7 +109,6 @@ def scan_candle_science(df_htf, df_ltf, instrument, htf, ltf):
         # Entry, SL, TP
         entry_price = matching_ofl['fvg_low'] if direction == 'BULLISH' else matching_ofl['fvg_high']
         sl = matching_ofl['swing_point_price']
-        sl = sl - buffer if direction == 'BULLISH' else sl + buffer
         
         risk = abs(entry_price - sl)
         if risk <= 0: continue
@@ -118,8 +146,8 @@ def scan_candle_science(df_htf, df_ltf, instrument, htf, ltf):
             'ltf': ltf,
             'signal_datetime': ltf_window.iloc[-1]['datetime'],
             'direction': direction,
-            'htf_candle_type': analysis['candle_type'],
-            'htf_confidence': analysis['confidence_score'],
+            'htf_candle_type': analysis['type'],
+            'htf_confidence': 100, # Visual confirmation is binary in this logic
             'bias_confidence': bias['bias_confidence'],
             'ltf_ofl_probability': matching_ofl['probability_label'],
             'entry_price': round(entry_price, 5),
