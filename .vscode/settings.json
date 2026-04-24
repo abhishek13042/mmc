@@ -1,0 +1,6 @@
+{
+    "python.defaultInterpreterPath": "${workspaceFolder}/mmc_backtest/mmc_env/Scripts/python.exe",
+    "python.analysis.extraPaths": [
+        "mmc_backtest"
+    ]
+}

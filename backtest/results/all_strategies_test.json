@@ -1,0 +1,4299 @@
+[
+  {
+    "strategy_id": "D1-S1",
+    "strategy_name": "Daily OFL Continuation",
+    "category": "INDIVIDUAL_TF",
+    "subcategory": "DAILY",
+    "description": "Daily candle closes as disrespect candle showing one-sided bullish or bearish OFLs inside. A PFVG is created on the daily timeframe. Next candle retraces into that daily FVG. Entry is taken from the FVG. No opposing daily PDA blocking the move.",
+    "timeframe_stack": [
+      "DAILY"
+    ],
+    "entry_timeframe": "DAILY",
+    "entry_model": "OFL",
+    "instruments": [
+      "EURUSD",
+      "GBPUSD",
+      "XAUUSD"
+    ],
+    "session_filter": {
+      "required": false,
+      "session": "ANY",
+      "start": "00:00",
+      "end": "23:59"
+    },
+    "required_conditions": [
+      {
+        "step": 1,
+        "timeframe": "DAILY",
+        "check_type": "CANDLE_SCIENCE",
+        "direction": "BOTH",
+        "module": "modules.video5_candle_science",
+        "function": "analyze_single_candle",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "candle_type": [
+            "DISRESPECT_BULLISH",
+            "DISRESPECT_BEARISH"
+          ],
+          "confidence_score": {
+            "min": 60.0
+          }
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Daily candle must be disrespect candle with min 60 confidence"
+      },
+      {
+        "step": 2,
+        "timeframe": "DAILY",
+        "check_type": "FVG",
+        "direction": "BOTH",
+        "module": "modules.video6_fvg_types",
+        "function": "scan_and_classify_all_fvgs",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "fvg_type": [
+            "PFVG"
+          ],
+          "is_mitigated": false,
+          "probability_rating": [
+            "HIGH"
+          ]
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Must have unmitigated PFVG on daily timeframe"
+      },
+      {
+        "step": 3,
+        "timeframe": "DAILY",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH"
+          ],
+          "is_active": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Daily OFL must be HIGH probability and active"
+      },
+      {
+        "step": 4,
+        "timeframe": "DAILY",
+        "check_type": "SWING_POINT",
+        "direction": "BOTH",
+        "module": "modules.video1_pd_arrays",
+        "function": "scan_candles_for_swings",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "no_opposing_pda_blocking": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "No unmitigated opposing PDA between entry and target"
+      }
+    ],
+    "invalidation_conditions": [
+      "Price closes above OFL swing high (bearish) or below OFL swing low (bullish)",
+      "FVG becomes mitigated before retrace entry",
+      "New opposing daily OFL forms before entry"
+    ],
+    "entry_rules": {
+      "trigger": "Price retraces into daily PFVG zone",
+      "entry_price": "At FVG high (bearish) or FVG low (bullish)",
+      "confirmation": "Daily candle closes inside or bounces from FVG",
+      "entry_type": "OFL"
+    },
+    "sl_rules": {
+      "placement": "Above OFL swing high (SHORT) or below OFL swing low (LONG)",
+      "buffer_pips": 2,
+      "hard_rule": "SL must cover the full OFL swing point"
+    },
+    "tp_rules": {
+      "structural": {
+        "primary": "Next daily swing high (BSL) for LONG or swing low (SSL) for SHORT",
+        "secondary": "Daily ITH or ITL"
+      },
+      "fixed_rr": {
+        "tp1": 2.0,
+        "tp2": 4.0,
+        "tp3": 5.0
+      },
+      "partial_exits": {
+        "at_1r": "Move SL to breakeven",
+        "at_2r": "Move SL to breakeven",
+        "at_4r": "Close 80 percent of position",
+        "at_5r": "Close remaining 20 percent"
+      }
+    },
+    "risk_management": {
+      "risk_per_trade_pct": 1.0,
+      "max_trades_per_day": 1,
+      "breakeven_trigger": "1:2",
+      "position_sizing": "equity_percentage"
+    },
+    "filters": {
+      "min_fvg_type": "PFVG",
+      "min_fva_type": "GOOD",
+      "min_ofl_probability": 75.0,
+      "min_candle_science_confidence": 60.0,
+      "rfvg_allowed": false
+    },
+    "minimum_arguments": 3,
+    "data_requirements": {
+      "DAILY": {
+        "min_candles": 100,
+        "source": "D1 CSV or resampled"
+      }
+    },
+    "expected_accuracy": "MEDIUM",
+    "notes": "Video 1-5: Price always moves toward PD Array. Daily disrespect candle = one sided OFLs inside = next candle continues direction. PFVG required \u2014 RFVG auto-disqualifies."
+  },
+  {
+    "strategy_id": "D1-S2",
+    "strategy_name": "Daily Respect Candle Reversal",
+    "category": "INDIVIDUAL_TF",
+    "subcategory": "DAILY",
+    "description": "Daily candle closes as respect candle with long wick at top (bearish reversal) or bottom (bullish reversal). The wick swept a swing point (BSL or SSL). A FVG is created in the reversal direction after the sweep. Entry on retrace into that FVG.",
+    "timeframe_stack": [
+      "DAILY"
+    ],
+    "entry_timeframe": "DAILY",
+    "entry_model": "MSS_FVG",
+    "instruments": [
+      "EURUSD",
+      "GBPUSD",
+      "XAUUSD"
+    ],
+    "session_filter": {
+      "required": false,
+      "session": "ANY",
+      "start": "00:00",
+      "end": "23:59"
+    },
+    "required_conditions": [
+      {
+        "step": 1,
+        "timeframe": "DAILY",
+        "check_type": "CANDLE_SCIENCE",
+        "direction": "BOTH",
+        "module": "modules.video5_candle_science",
+        "function": "analyze_single_candle",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "candle_type": [
+            "RESPECT_BULLISH",
+            "RESPECT_BEARISH"
+          ],
+          "confidence_score": {
+            "min": 65.0
+          }
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Daily candle must be respect candle \u2014 long wick confirms sweep"
+      },
+      {
+        "step": 2,
+        "timeframe": "DAILY",
+        "check_type": "SWEEP",
+        "direction": "BOTH",
+        "module": "modules.video8_sweeps",
+        "function": "scan_candles_for_sweeps",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "liquidity_event": "SWEEP",
+          "probability_score": {
+            "min": 65.0
+          }
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Swing point must be swept \u2014 not a run"
+      },
+      {
+        "step": 3,
+        "timeframe": "DAILY",
+        "check_type": "FVG",
+        "direction": "BOTH",
+        "module": "modules.video6_fvg_types",
+        "function": "scan_and_classify_all_fvgs",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "fvg_type": [
+            "PFVG",
+            "BFVG"
+          ],
+          "is_mitigated": false,
+          "direction": "REVERSAL_DIRECTION"
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "FVG must exist in reversal direction after sweep"
+      }
+    ],
+    "invalidation_conditions": [
+      "Price closes above swept high (for bearish setup)",
+      "Price closes below swept low (for bullish setup)",
+      "FVG mitigated before entry"
+    ],
+    "entry_rules": {
+      "trigger": "Price retraces into reversal FVG",
+      "entry_price": "FVG high (bearish) or FVG low (bullish)",
+      "confirmation": "Candle closes inside FVG or rejects from it",
+      "entry_type": "MSS_FVG"
+    },
+    "sl_rules": {
+      "placement": "Above sweep wick high (SHORT) or below sweep wick low (LONG)",
+      "buffer_pips": 3,
+      "hard_rule": "SL must be beyond the sweep wick \u2014 not just the FVG"
+    },
+    "tp_rules": {
+      "structural": {
+        "primary": "Next opposing daily PDA",
+        "secondary": "Daily ITH or ITL"
+      },
+      "fixed_rr": {
+        "tp1": 2.0,
+        "tp2": 4.0,
+        "tp3": 5.0
+      },
+      "partial_exits": {
+        "at_2r": "Move SL to breakeven",
+        "at_4r": "Close 80 percent",
+        "at_5r": "Close 20 percent remaining"
+      }
+    },
+    "risk_management": {
+      "risk_per_trade_pct": 1.0,
+      "max_trades_per_day": 1,
+      "breakeven_trigger": "1:2",
+      "position_sizing": "equity_percentage"
+    },
+    "filters": {
+      "min_fvg_type": "PFVG",
+      "min_sweep_probability": 65.0,
+      "min_candle_science_confidence": 65.0,
+      "rfvg_allowed": false
+    },
+    "minimum_arguments": 3,
+    "data_requirements": {
+      "DAILY": {
+        "min_candles": 100,
+        "source": "D1 CSV"
+      }
+    },
+    "expected_accuracy": "HIGH",
+    "notes": "Video 5+8: Respect candle = OFLs both directions inside. Long wick = sweep happened. Reversal FVG = MSS confirmation. High accuracy because sweep + respect candle + FVG = triple confluence."
+  },
+  {
+    "strategy_id": "D1-S3",
+    "strategy_name": "Daily FVA Continuation",
+    "category": "INDIVIDUAL_TF",
+    "subcategory": "DAILY",
+    "description": "Daily IT High or IT Low has been taken creating a FVA. The FVA is IDEAL or GOOD type with overlapping FVG. Price retraces into the FVA zone. Entry from the overlapping FVG inside the FVA. This is the ODD (overlapping defense) setup \u2014 double probability.",
+    "timeframe_stack": [
+      "DAILY"
+    ],
+    "entry_timeframe": "DAILY",
+    "entry_model": "OFL",
+    "instruments": [
+      "EURUSD",
+      "GBPUSD",
+      "XAUUSD"
+    ],
+    "session_filter": {
+      "required": false,
+      "session": "ANY",
+      "start": "00:00",
+      "end": "23:59"
+    },
+    "required_conditions": [
+      {
+        "step": 1,
+        "timeframe": "DAILY",
+        "check_type": "IT_POINT",
+        "direction": "BOTH",
+        "module": "modules.video2_market_structure",
+        "function": "scan_it_points",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "point_type": [
+            "IT_HIGH",
+            "IT_LOW"
+          ],
+          "is_broken": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Daily IT High or IT Low must have been taken"
+      },
+      {
+        "step": 2,
+        "timeframe": "DAILY",
+        "check_type": "FVA",
+        "direction": "BOTH",
+        "module": "modules.video7_fva_types",
+        "function": "scan_and_classify_all_fvas",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "fva_type": [
+            "IDEAL",
+            "GOOD"
+          ],
+          "has_overlapping_fvg": true,
+          "is_sweep": false,
+          "probability_score": {
+            "min": 70.0
+          }
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "FVA must be IDEAL or GOOD with overlapping FVG \u2014 not WEAK"
+      },
+      {
+        "step": 3,
+        "timeframe": "DAILY",
+        "check_type": "MARKET_STATE",
+        "direction": "BOTH",
+        "module": "modules.video2_market_structure",
+        "function": "fair_value_theory_check",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "state": "OFFERING_FAIR_VALUE"
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Market must be offering fair value \u2014 not seeking liquidity"
+      },
+      {
+        "step": 4,
+        "timeframe": "DAILY",
+        "check_type": "FVG",
+        "direction": "BOTH",
+        "module": "modules.video6_fvg_types",
+        "function": "scan_and_classify_all_fvgs",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "fvg_type": [
+            "PFVG"
+          ],
+          "at_opposing_pda": true,
+          "is_mitigated": false
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Overlapping FVG must be PFVG and at opposing PDA level"
+      }
+    ],
+    "invalidation_conditions": [
+      "Market state shifts to SEEKING_LIQUIDITY",
+      "Price closes beyond FVA low (bullish) or FVA high (bearish)",
+      "FVG mitigated before entry"
+    ],
+    "entry_rules": {
+      "trigger": "Price retraces into FVA overlapping FVG zone",
+      "entry_price": "Overlapping FVG high (bearish) or low (bullish)",
+      "confirmation": "Candle rejects from FVG inside FVA",
+      "entry_type": "OFL"
+    },
+    "sl_rules": {
+      "placement": "Below FVA low (LONG) or above FVA high (SHORT)",
+      "buffer_pips": 3,
+      "hard_rule": "SL beyond full FVA boundary not just FVG"
+    },
+    "tp_rules": {
+      "structural": {
+        "primary": "BSL or SSL (next swing high/low)",
+        "secondary": "Daily ITH or ITL"
+      },
+      "fixed_rr": {
+        "tp1": 2.0,
+        "tp2": 4.0,
+        "tp3": 5.0
+      },
+      "partial_exits": {
+        "at_2r": "Move SL to breakeven",
+        "at_4r": "Close 80 percent",
+        "at_5r": "Close 20 percent remaining"
+      }
+    },
+    "risk_management": {
+      "risk_per_trade_pct": 1.0,
+      "max_trades_per_day": 1,
+      "breakeven_trigger": "1:2",
+      "position_sizing": "equity_percentage"
+    },
+    "filters": {
+      "min_fvg_type": "PFVG",
+      "min_fva_type": "GOOD",
+      "min_fva_probability": 70.0,
+      "weak_fva_allowed": false,
+      "rfvg_allowed": false
+    },
+    "minimum_arguments": 3,
+    "data_requirements": {
+      "DAILY": {
+        "min_candles": 150,
+        "source": "D1 CSV"
+      }
+    },
+    "expected_accuracy": "HIGH",
+    "notes": "Video 7: IDEAL FVA = triple probability. FVA with overlapping FVG = double probability. Market offering fair value = retracement is normal and expected. Highest accuracy daily setup."
+  },
+  {
+    "strategy_id": "D1-S4",
+    "strategy_name": "Daily Liquidity Sweep + FVG",
+    "category": "INDIVIDUAL_TF",
+    "subcategory": "DAILY",
+    "description": "Daily swing high or low is swept (wick through close back). Immediately after the sweep a bearish or bullish PFVG is created. This is the turtle soup setup on the daily timeframe. Entry on retrace into the post-sweep FVG. High accuracy because sweep traps breakout traders providing fuel for the move.",
+    "timeframe_stack": [
+      "DAILY"
+    ],
+    "entry_timeframe": "DAILY",
+    "entry_model": "MSS_FVG",
+    "instruments": [
+      "EURUSD",
+      "GBPUSD",
+      "XAUUSD"
+    ],
+    "session_filter": {
+      "required": false,
+      "session": "ANY",
+      "start": "00:00",
+      "end": "23:59"
+    },
+    "required_conditions": [
+      {
+        "step": 1,
+        "timeframe": "DAILY",
+        "check_type": "SWEEP",
+        "direction": "BOTH",
+        "module": "modules.video8_sweeps",
+        "function": "scan_candles_for_sweeps",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "liquidity_event": "SWEEP",
+          "comfortable_candles": {
+            "max": 2
+          },
+          "probability_score": {
+            "min": 70.0
+          }
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Clean sweep \u2014 price went through and immediately reversed"
+      },
+      {
+        "step": 2,
+        "timeframe": "DAILY",
+        "check_type": "FVG",
+        "direction": "BOTH",
+        "module": "modules.video6_fvg_types",
+        "function": "scan_and_classify_all_fvgs",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "fvg_type": [
+            "PFVG"
+          ],
+          "after_sweep": true,
+          "is_mitigated": false,
+          "probability_rating": [
+            "HIGH",
+            "MEDIUM"
+          ]
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "PFVG must form immediately after sweep candle"
+      },
+      {
+        "step": 3,
+        "timeframe": "DAILY",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH",
+            "MEDIUM"
+          ],
+          "is_active": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Post-sweep OFL must be active and minimum MEDIUM probability"
+      }
+    ],
+    "invalidation_conditions": [
+      "Price closes above swept high (bearish) \u2014 run not sweep",
+      "Price closes below swept low (bullish) \u2014 run not sweep",
+      "More than 2 candles comfortable beyond swept level",
+      "FVG mitigated before entry"
+    ],
+    "entry_rules": {
+      "trigger": "Price retraces into post-sweep PFVG",
+      "entry_price": "FVG high (bearish) or FVG low (bullish)",
+      "confirmation": "Candle rejects from FVG zone",
+      "entry_type": "MSS_FVG"
+    },
+    "sl_rules": {
+      "placement": "Above sweep wick high (SHORT) or below sweep wick low (LONG)",
+      "buffer_pips": 3,
+      "hard_rule": "SL beyond full sweep wick"
+    },
+    "tp_rules": {
+      "structural": {
+        "primary": "Opposing swing point (SSL for LONG, BSL for SHORT)",
+        "secondary": "Daily ITH or ITL"
+      },
+      "fixed_rr": {
+        "tp1": 2.0,
+        "tp2": 4.0,
+        "tp3": 5.0
+      },
+      "partial_exits": {
+        "at_2r": "Move SL to breakeven",
+        "at_4r": "Close 80 percent",
+        "at_5r": "Close 20 percent remaining"
+      }
+    },
+    "risk_management": {
+      "risk_per_trade_pct": 1.0,
+      "max_trades_per_day": 1,
+      "breakeven_trigger": "1:2",
+      "position_sizing": "equity_percentage"
+    },
+    "filters": {
+      "min_fvg_type": "PFVG",
+      "min_sweep_probability": 70.0,
+      "comfortable_candles_max": 2,
+      "rfvg_allowed": false
+    },
+    "minimum_arguments": 2,
+    "data_requirements": {
+      "DAILY": {
+        "min_candles": 100,
+        "source": "D1 CSV"
+      }
+    },
+    "expected_accuracy": "HIGH",
+    "notes": "Video 8: Turtle soup. Sweep traps breakout traders. Their stop losses fuel the continuation. Immediate reversal after sweep = clean setup. PFVG after sweep = highest accuracy version."
+  },
+  {
+    "strategy_id": "D1-S5",
+    "strategy_name": "Daily MSS + FVG ICT 2022",
+    "category": "INDIVIDUAL_TF",
+    "subcategory": "DAILY",
+    "description": "Daily BSL or SSL is swept creating a market structure shift. A FVG forms in the new direction post MSS confirming the shift. Entry on retrace into MSS FVG. This is the ICT 2022 entry model applied on the daily timeframe. MSS = price swept liquidity then created FVG in opposite direction = structure has shifted.",
+    "timeframe_stack": [
+      "DAILY"
+    ],
+    "entry_timeframe": "DAILY",
+    "entry_model": "MSS_FVG",
+    "instruments": [
+      "EURUSD",
+      "GBPUSD",
+      "XAUUSD"
+    ],
+    "session_filter": {
+      "required": false,
+      "session": "ANY",
+      "start": "00:00",
+      "end": "23:59"
+    },
+    "required_conditions": [
+      {
+        "step": 1,
+        "timeframe": "DAILY",
+        "check_type": "SWEEP",
+        "direction": "BOTH",
+        "module": "modules.video8_sweeps",
+        "function": "scan_candles_for_sweeps",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "liquidity_event": "SWEEP",
+          "sweep_type": [
+            "ORDER_FLOW_SWEEP",
+            "TURTLE_SOUP"
+          ],
+          "probability_score": {
+            "min": 65.0
+          }
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "BSL or SSL must be swept on daily"
+      },
+      {
+        "step": 2,
+        "timeframe": "DAILY",
+        "check_type": "MSS",
+        "direction": "BOTH",
+        "module": "modules.video8_sweeps",
+        "function": "detect_order_flow_sweep",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "is_ofl_sweep": true,
+          "continuation_fvg": {
+            "exists": true
+          }
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "MSS confirmed by FVG in new direction after sweep"
+      },
+      {
+        "step": 3,
+        "timeframe": "DAILY",
+        "check_type": "FVG",
+        "direction": "BOTH",
+        "module": "modules.video6_fvg_types",
+        "function": "full_fvg_analysis",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "fvg_type": [
+            "PFVG",
+            "BFVG"
+          ],
+          "is_mitigated": false,
+          "probability_rating": [
+            "HIGH",
+            "MEDIUM"
+          ]
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "MSS FVG must be PFVG or BFVG \u2014 not RFVG"
+      }
+    ],
+    "invalidation_conditions": [
+      "Price closes back above swept BSL (bullish MSS invalidated)",
+      "Price closes back below swept SSL (bearish MSS invalidated)",
+      "No FVG forms after sweep \u2014 structure not shifted"
+    ],
+    "entry_rules": {
+      "trigger": "Price retraces into post-MSS FVG",
+      "entry_price": "FVG high (bearish) or FVG low (bullish)",
+      "confirmation": "Rejection from FVG in MSS direction",
+      "entry_type": "MSS_FVG"
+    },
+    "sl_rules": {
+      "placement": "Above swept BSL high (SHORT) or below swept SSL low (LONG)",
+      "buffer_pips": 3,
+      "hard_rule": "SL must be beyond the liquidity that was swept"
+    },
+    "tp_rules": {
+      "structural": {
+        "primary": "BSL (LONG target) or SSL (SHORT target)",
+        "secondary": "ITH or ITL on daily"
+      },
+      "fixed_rr": {
+        "tp1": 2.0,
+        "tp2": 4.0,
+        "tp3": 5.0
+      },
+      "partial_exits": {
+        "at_2r": "Move SL to breakeven",
+        "at_4r": "Close 80 percent",
+        "at_5r": "Close 20 percent remaining"
+      }
+    },
+    "risk_management": {
+      "risk_per_trade_pct": 1.0,
+      "max_trades_per_day": 1,
+      "breakeven_trigger": "1:2",
+      "position_sizing": "equity_percentage"
+    },
+    "filters": {
+      "min_fvg_type": "PFVG",
+      "min_sweep_probability": 65.0,
+      "rfvg_allowed": false,
+      "mss_confirmation_required": true
+    },
+    "minimum_arguments": 2,
+    "data_requirements": {
+      "DAILY": {
+        "min_candles": 100,
+        "source": "D1 CSV"
+      }
+    },
+    "expected_accuracy": "HIGH",
+    "notes": "ICT 2022 model. MSS = market structure shift. Sweep + FVG in new direction = price intention changed. Most powerful when daily sweep aligns with weekly bias."
+  },
+  {
+    "strategy_id": "4H-S1",
+    "strategy_name": "4H OFL Entry from Daily Context",
+    "category": "INDIVIDUAL_TF",
+    "subcategory": "4H",
+    "description": "Daily bias is confirmed through candle science or OFL. A daily PDA is identified as target. On the 4H timeframe an OFL forms in the daily direction with a PFVG. Entry on retrace into 4H PFVG. This is a two timeframe setup using daily for direction and 4H for entry precision.",
+    "timeframe_stack": [
+      "DAILY",
+      "4H"
+    ],
+    "entry_timeframe": "4H",
+    "entry_model": "OFL",
+    "instruments": [
+      "EURUSD",
+      "GBPUSD",
+      "XAUUSD"
+    ],
+    "session_filter": {
+      "required": false,
+      "session": "ANY",
+      "start": "00:00",
+      "end": "23:59"
+    },
+    "required_conditions": [
+      {
+        "step": 1,
+        "timeframe": "DAILY",
+        "check_type": "CANDLE_SCIENCE",
+        "direction": "BOTH",
+        "module": "modules.video5_candle_science",
+        "function": "get_candle_science_bias",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "daily_bias": [
+            "BULLISH",
+            "BEARISH"
+          ],
+          "bias_confidence": [
+            "HIGH",
+            "MEDIUM"
+          ]
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Daily bias must be confirmed BULLISH or BEARISH"
+      },
+      {
+        "step": 2,
+        "timeframe": "DAILY",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH"
+          ],
+          "is_active": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Daily OFL must be HIGH probability and active"
+      },
+      {
+        "step": 3,
+        "timeframe": "4H",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "4H"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH",
+            "MEDIUM"
+          ],
+          "is_active": true,
+          "direction_matches_daily": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "4H OFL must align with daily direction"
+      },
+      {
+        "step": 4,
+        "timeframe": "4H",
+        "check_type": "FVG",
+        "direction": "BOTH",
+        "module": "modules.video6_fvg_types",
+        "function": "scan_and_classify_all_fvgs",
+        "parameters": {
+          "timeframe": "4H"
+        },
+        "expected_result": {
+          "fvg_type": [
+            "PFVG"
+          ],
+          "is_mitigated": false,
+          "probability_rating": [
+            "HIGH"
+          ]
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "4H PFVG required \u2014 only highest quality FVG"
+      }
+    ],
+    "invalidation_conditions": [
+      "4H OFL swing point broken (price closes beyond it)",
+      "Daily bias changes (new opposing daily OFL forms)",
+      "4H FVG mitigated before entry"
+    ],
+    "entry_rules": {
+      "trigger": "Price retraces into 4H PFVG",
+      "entry_price": "4H FVG high (SHORT) or 4H FVG low (LONG)",
+      "confirmation": "4H candle rejects from FVG",
+      "entry_type": "OFL"
+    },
+    "sl_rules": {
+      "placement": "Above 4H OFL swing high (SHORT) or below swing low (LONG)",
+      "buffer_pips": 2,
+      "hard_rule": "SL covers full 4H OFL swing"
+    },
+    "tp_rules": {
+      "structural": {
+        "primary": "Daily BSL or SSL",
+        "secondary": "Daily ITH or ITL"
+      },
+      "fixed_rr": {
+        "tp1": 2.0,
+        "tp2": 4.0,
+        "tp3": 5.0
+      },
+      "partial_exits": {
+        "at_2r": "Move SL to breakeven",
+        "at_4r": "Close 80 percent",
+        "at_5r": "Close 20 percent remaining"
+      }
+    },
+    "risk_management": {
+      "risk_per_trade_pct": 1.0,
+      "max_trades_per_day": 2,
+      "breakeven_trigger": "1:2",
+      "position_sizing": "equity_percentage"
+    },
+    "filters": {
+      "min_fvg_type": "PFVG",
+      "min_ofl_probability_daily": 75.0,
+      "min_ofl_probability_4h": 60.0,
+      "rfvg_allowed": false,
+      "direction_alignment_required": true
+    },
+    "minimum_arguments": 3,
+    "data_requirements": {
+      "DAILY": {
+        "min_candles": 100,
+        "source": "D1 CSV"
+      },
+      "4H": {
+        "min_candles": 300,
+        "source": "resampled from M1"
+      }
+    },
+    "expected_accuracy": "HIGH",
+    "notes": "Two TF confluence. Daily sets direction, 4H provides entry. Direction alignment between both TFs is mandatory. Higher probability than single TF because big institution flow (daily) confirmed by 4H structure."
+  },
+  {
+    "strategy_id": "4H-S2",
+    "strategy_name": "4H IT High Low Break + FVA",
+    "category": "INDIVIDUAL_TF",
+    "subcategory": "4H",
+    "description": "A 4H Intermediate Term High or Low is taken creating a 4H Fair Value Area. The FVA is IDEAL or GOOD with overlapping FVG. Price retraces into the FVA after taking the IT point. Entry from the overlapping FVG inside the FVA. This is the ODD setup on 4H.",
+    "timeframe_stack": [
+      "DAILY",
+      "4H"
+    ],
+    "entry_timeframe": "4H",
+    "entry_model": "OFL",
+    "instruments": [
+      "EURUSD",
+      "GBPUSD",
+      "XAUUSD"
+    ],
+    "session_filter": {
+      "required": false,
+      "session": "ANY",
+      "start": "00:00",
+      "end": "23:59"
+    },
+    "required_conditions": [
+      {
+        "step": 1,
+        "timeframe": "DAILY",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH"
+          ],
+          "is_active": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Daily OFL must confirm overall direction"
+      },
+      {
+        "step": 2,
+        "timeframe": "4H",
+        "check_type": "IT_POINT",
+        "direction": "BOTH",
+        "module": "modules.video2_market_structure",
+        "function": "scan_it_points",
+        "parameters": {
+          "timeframe": "4H"
+        },
+        "expected_result": {
+          "point_type": [
+            "IT_HIGH",
+            "IT_LOW"
+          ],
+          "is_broken": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "4H IT High or Low must have been taken"
+      },
+      {
+        "step": 3,
+        "timeframe": "4H",
+        "check_type": "FVA",
+        "direction": "BOTH",
+        "module": "modules.video7_fva_types",
+        "function": "scan_and_classify_all_fvas",
+        "parameters": {
+          "timeframe": "4H"
+        },
+        "expected_result": {
+          "fva_type": [
+            "IDEAL",
+            "GOOD"
+          ],
+          "has_overlapping_fvg": true,
+          "probability_score": {
+            "min": 70.0
+          }
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "4H FVA must be IDEAL or GOOD with overlapping FVG"
+      },
+      {
+        "step": 4,
+        "timeframe": "4H",
+        "check_type": "MARKET_STATE",
+        "direction": "BOTH",
+        "module": "modules.video2_market_structure",
+        "function": "fair_value_theory_check",
+        "parameters": {
+          "timeframe": "4H"
+        },
+        "expected_result": {
+          "state": "OFFERING_FAIR_VALUE"
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "4H market must be offering fair value not seeking liquidity"
+      }
+    ],
+    "invalidation_conditions": [
+      "Market state becomes SEEKING_LIQUIDITY on 4H",
+      "Price closes beyond FVA boundary",
+      "Daily direction reverses"
+    ],
+    "entry_rules": {
+      "trigger": "Retrace into 4H FVA overlapping FVG zone",
+      "entry_price": "Overlapping FVG high (SHORT) or low (LONG)",
+      "confirmation": "4H candle rejects from FVA FVG zone",
+      "entry_type": "OFL"
+    },
+    "sl_rules": {
+      "placement": "Beyond FVA boundary \u2014 below FVA low (LONG) above FVA high (SHORT)",
+      "buffer_pips": 3,
+      "hard_rule": "SL covers full FVA not just FVG"
+    },
+    "tp_rules": {
+      "structural": {
+        "primary": "Next 4H ITH or ITL",
+        "secondary": "Daily BSL or SSL"
+      },
+      "fixed_rr": {
+        "tp1": 2.0,
+        "tp2": 4.0,
+        "tp3": 5.0
+      },
+      "partial_exits": {
+        "at_2r": "Move SL to breakeven",
+        "at_4r": "Close 80 percent",
+        "at_5r": "Close 20 percent remaining"
+      }
+    },
+    "risk_management": {
+      "risk_per_trade_pct": 1.0,
+      "max_trades_per_day": 2,
+      "breakeven_trigger": "1:2",
+      "position_sizing": "equity_percentage"
+    },
+    "filters": {
+      "min_fvg_type": "PFVG",
+      "min_fva_type": "GOOD",
+      "weak_fva_allowed": false,
+      "rfvg_allowed": false,
+      "min_fva_probability": 70.0
+    },
+    "minimum_arguments": 3,
+    "data_requirements": {
+      "DAILY": {
+        "min_candles": 100,
+        "source": "D1 CSV"
+      },
+      "4H": {
+        "min_candles": 300,
+        "source": "resampled from M1"
+      }
+    },
+    "expected_accuracy": "HIGH",
+    "notes": "Video 7: IT point break creates FVA. FVA with overlapping FVG = double probability (ODD setup). Market offering fair value = retracement expected and normal. High confidence setup."
+  },
+  {
+    "strategy_id": "4H-S3",
+    "strategy_name": "4H Liquidity Sweep Continuation",
+    "category": "INDIVIDUAL_TF",
+    "subcategory": "4H",
+    "description": "4H swing high or low is swept cleanly with immediate reversal. Post-sweep PFVG created in continuation direction. Daily direction must align. Entry from post-sweep 4H PFVG on retrace.",
+    "timeframe_stack": [
+      "DAILY",
+      "4H"
+    ],
+    "entry_timeframe": "4H",
+    "entry_model": "MSS_FVG",
+    "instruments": [
+      "EURUSD",
+      "GBPUSD",
+      "XAUUSD"
+    ],
+    "session_filter": {
+      "required": false,
+      "session": "ANY",
+      "start": "00:00",
+      "end": "23:59"
+    },
+    "required_conditions": [
+      {
+        "step": 1,
+        "timeframe": "DAILY",
+        "check_type": "CANDLE_SCIENCE",
+        "direction": "BOTH",
+        "module": "modules.video5_candle_science",
+        "function": "get_candle_science_bias",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "daily_bias": [
+            "BULLISH",
+            "BEARISH"
+          ],
+          "bias_confidence": [
+            "HIGH",
+            "MEDIUM"
+          ]
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Daily bias confirmed before 4H sweep setup"
+      },
+      {
+        "step": 2,
+        "timeframe": "4H",
+        "check_type": "SWEEP",
+        "direction": "BOTH",
+        "module": "modules.video8_sweeps",
+        "function": "scan_candles_for_sweeps",
+        "parameters": {
+          "timeframe": "4H"
+        },
+        "expected_result": {
+          "liquidity_event": "SWEEP",
+          "comfortable_candles": {
+            "max": 2
+          },
+          "probability_score": {
+            "min": 68.0
+          },
+          "sweep_direction_matches_daily_bias": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "4H sweep must be clean and align with daily direction"
+      },
+      {
+        "step": 3,
+        "timeframe": "4H",
+        "check_type": "FVG",
+        "direction": "BOTH",
+        "module": "modules.video6_fvg_types",
+        "function": "scan_and_classify_all_fvgs",
+        "parameters": {
+          "timeframe": "4H"
+        },
+        "expected_result": {
+          "fvg_type": [
+            "PFVG"
+          ],
+          "after_sweep": true,
+          "is_mitigated": false
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "PFVG must form immediately after 4H sweep"
+      }
+    ],
+    "invalidation_conditions": [
+      "More than 2 candles comfortable beyond swept level",
+      "Daily bias changes before entry",
+      "FVG mitigated before retrace"
+    ],
+    "entry_rules": {
+      "trigger": "Retrace into post-sweep 4H PFVG",
+      "entry_price": "4H FVG high (SHORT) or 4H FVG low (LONG)",
+      "confirmation": "4H candle closes inside FVG or rejects",
+      "entry_type": "MSS_FVG"
+    },
+    "sl_rules": {
+      "placement": "Beyond sweep wick high (SHORT) or low (LONG)",
+      "buffer_pips": 3,
+      "hard_rule": "SL beyond full sweep wick"
+    },
+    "tp_rules": {
+      "structural": {
+        "primary": "Daily BSL or SSL",
+        "secondary": "4H ITH or ITL"
+      },
+      "fixed_rr": {
+        "tp1": 2.0,
+        "tp2": 4.0,
+        "tp3": 5.0
+      },
+      "partial_exits": {
+        "at_2r": "Move SL to breakeven",
+        "at_4r": "Close 80 percent",
+        "at_5r": "Close 20 percent remaining"
+      }
+    },
+    "risk_management": {
+      "risk_per_trade_pct": 1.0,
+      "max_trades_per_day": 2,
+      "breakeven_trigger": "1:2",
+      "position_sizing": "equity_percentage"
+    },
+    "filters": {
+      "min_fvg_type": "PFVG",
+      "min_sweep_probability": 68.0,
+      "comfortable_candles_max": 2,
+      "daily_alignment_required": true,
+      "rfvg_allowed": false
+    },
+    "minimum_arguments": 2,
+    "data_requirements": {
+      "DAILY": {
+        "min_candles": 100,
+        "source": "D1 CSV"
+      },
+      "4H": {
+        "min_candles": 300,
+        "source": "resampled from M1"
+      }
+    },
+    "expected_accuracy": "HIGH",
+    "notes": "Video 8: 4H sweep traps 4H breakout traders. Daily direction alignment makes this high accuracy. Immediate reversal after sweep = strong signal. Post-sweep PFVG = entry confirmation."
+  },
+  {
+    "strategy_id": "4H-S4",
+    "strategy_name": "4H MSS + FVG ICT 2022",
+    "category": "INDIVIDUAL_TF",
+    "subcategory": "4H",
+    "description": "4H BSL or SSL is swept causing market structure shift. FVG forms in new direction after MSS confirming the shift. Daily direction must align. Entry into 4H MSS FVG on retrace. ICT 2022 entry model applied at 4H timeframe with daily confluence.",
+    "timeframe_stack": [
+      "DAILY",
+      "4H"
+    ],
+    "entry_timeframe": "4H",
+    "entry_model": "MSS_FVG",
+    "instruments": [
+      "EURUSD",
+      "GBPUSD",
+      "XAUUSD"
+    ],
+    "session_filter": {
+      "required": false,
+      "session": "ANY",
+      "start": "00:00",
+      "end": "23:59"
+    },
+    "required_conditions": [
+      {
+        "step": 1,
+        "timeframe": "DAILY",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH"
+          ],
+          "is_active": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Daily OFL confirms overall direction"
+      },
+      {
+        "step": 2,
+        "timeframe": "4H",
+        "check_type": "SWEEP",
+        "direction": "BOTH",
+        "module": "modules.video8_sweeps",
+        "function": "scan_candles_for_sweeps",
+        "parameters": {
+          "timeframe": "4H"
+        },
+        "expected_result": {
+          "liquidity_event": "SWEEP",
+          "sweep_type": [
+            "ORDER_FLOW_SWEEP",
+            "TURTLE_SOUP"
+          ]
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "4H BSL or SSL swept"
+      },
+      {
+        "step": 3,
+        "timeframe": "4H",
+        "check_type": "MSS",
+        "direction": "BOTH",
+        "module": "modules.video8_sweeps",
+        "function": "detect_order_flow_sweep",
+        "parameters": {
+          "timeframe": "4H"
+        },
+        "expected_result": {
+          "is_ofl_sweep": true,
+          "continuation_fvg": {
+            "exists": true
+          }
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "MSS confirmed by continuation FVG in new direction"
+      },
+      {
+        "step": 4,
+        "timeframe": "4H",
+        "check_type": "FVG",
+        "direction": "BOTH",
+        "module": "modules.video6_fvg_types",
+        "function": "full_fvg_analysis",
+        "parameters": {
+          "timeframe": "4H"
+        },
+        "expected_result": {
+          "fvg_type": [
+            "PFVG"
+          ],
+          "is_mitigated": false,
+          "probability_rating": [
+            "HIGH"
+          ]
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "MSS FVG must be PFVG for entry"
+      }
+    ],
+    "invalidation_conditions": [
+      "Price closes back beyond swept level invalidating MSS",
+      "No FVG forms after sweep",
+      "Daily OFL invalidated"
+    ],
+    "entry_rules": {
+      "trigger": "Retrace into 4H MSS PFVG",
+      "entry_price": "4H FVG high (SHORT) or 4H FVG low (LONG)",
+      "confirmation": "Rejection candle from MSS FVG",
+      "entry_type": "MSS_FVG"
+    },
+    "sl_rules": {
+      "placement": "Beyond swept BSL high (SHORT) or SSL low (LONG)",
+      "buffer_pips": 3,
+      "hard_rule": "SL beyond swept liquidity level"
+    },
+    "tp_rules": {
+      "structural": {
+        "primary": "Daily BSL or SSL",
+        "secondary": "4H or Daily ITH ITL"
+      },
+      "fixed_rr": {
+        "tp1": 2.0,
+        "tp2": 4.0,
+        "tp3": 5.0
+      },
+      "partial_exits": {
+        "at_2r": "Move SL to breakeven",
+        "at_4r": "Close 80 percent",
+        "at_5r": "Close 20 percent remaining"
+      }
+    },
+    "risk_management": {
+      "risk_per_trade_pct": 1.0,
+      "max_trades_per_day": 2,
+      "breakeven_trigger": "1:2",
+      "position_sizing": "equity_percentage"
+    },
+    "filters": {
+      "min_fvg_type": "PFVG",
+      "mss_required": true,
+      "daily_alignment_required": true,
+      "rfvg_allowed": false
+    },
+    "minimum_arguments": 3,
+    "data_requirements": {
+      "DAILY": {
+        "min_candles": 100,
+        "source": "D1 CSV"
+      },
+      "4H": {
+        "min_candles": 300,
+        "source": "resampled from M1"
+      }
+    },
+    "expected_accuracy": "HIGH",
+    "notes": "ICT 2022 on 4H. Daily + 4H confluence. MSS = structural confirmation of direction change. PFVG after MSS = precise entry. Strong setup when daily OFL is HIGH probability."
+  },
+  {
+    "strategy_id": "4H-S5",
+    "strategy_name": "4H Candle Science + OFL",
+    "category": "INDIVIDUAL_TF",
+    "subcategory": "4H",
+    "description": "Weekly candle closed as disrespect or respect candle. 4H OFL forms in the weekly candle science direction. 4H PFVG present as entry zone. Three timeframe confluence: weekly CS + 4H OFL + 4H FVG.",
+    "timeframe_stack": [
+      "WEEKLY",
+      "4H"
+    ],
+    "entry_timeframe": "4H",
+    "entry_model": "OFL",
+    "instruments": [
+      "EURUSD",
+      "GBPUSD",
+      "XAUUSD"
+    ],
+    "session_filter": {
+      "required": false,
+      "session": "ANY",
+      "start": "00:00",
+      "end": "23:59"
+    },
+    "required_conditions": [
+      {
+        "step": 1,
+        "timeframe": "WEEKLY",
+        "check_type": "CANDLE_SCIENCE",
+        "direction": "BOTH",
+        "module": "modules.video5_candle_science",
+        "function": "analyze_single_candle",
+        "parameters": {
+          "timeframe": "WEEKLY"
+        },
+        "expected_result": {
+          "candle_type": [
+            "DISRESPECT_BULLISH",
+            "DISRESPECT_BEARISH",
+            "RESPECT_BULLISH",
+            "RESPECT_BEARISH"
+          ],
+          "confidence_score": {
+            "min": 65.0
+          }
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Weekly candle must have clear candle science signal"
+      },
+      {
+        "step": 2,
+        "timeframe": "4H",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "4H"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH"
+          ],
+          "is_active": true,
+          "direction_matches_weekly_cs": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "4H OFL must align with weekly candle science direction"
+      },
+      {
+        "step": 3,
+        "timeframe": "4H",
+        "check_type": "FVG",
+        "direction": "BOTH",
+        "module": "modules.video6_fvg_types",
+        "function": "scan_and_classify_all_fvgs",
+        "parameters": {
+          "timeframe": "4H"
+        },
+        "expected_result": {
+          "fvg_type": [
+            "PFVG"
+          ],
+          "is_mitigated": false,
+          "probability_rating": [
+            "HIGH"
+          ]
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "4H PFVG required for entry"
+      }
+    ],
+    "invalidation_conditions": [
+      "Weekly candle science direction changes",
+      "4H OFL invalidated",
+      "4H FVG mitigated before entry"
+    ],
+    "entry_rules": {
+      "trigger": "Price retraces into 4H PFVG",
+      "entry_price": "4H FVG high (SHORT) or 4H FVG low (LONG)",
+      "confirmation": "4H candle rejection from FVG",
+      "entry_type": "OFL"
+    },
+    "sl_rules": {
+      "placement": "Above 4H OFL swing high (SHORT) below swing low (LONG)",
+      "buffer_pips": 2,
+      "hard_rule": "SL covers full 4H OFL swing"
+    },
+    "tp_rules": {
+      "structural": {
+        "primary": "Weekly target BSL or SSL",
+        "secondary": "4H ITH or ITL"
+      },
+      "fixed_rr": {
+        "tp1": 2.0,
+        "tp2": 4.0,
+        "tp3": 5.0
+      },
+      "partial_exits": {
+        "at_2r": "Move SL to breakeven",
+        "at_4r": "Close 80 percent",
+        "at_5r": "Close 20 percent remaining"
+      }
+    },
+    "risk_management": {
+      "risk_per_trade_pct": 1.0,
+      "max_trades_per_day": 2,
+      "breakeven_trigger": "1:2",
+      "position_sizing": "equity_percentage"
+    },
+    "filters": {
+      "min_fvg_type": "PFVG",
+      "min_weekly_cs_confidence": 65.0,
+      "min_4h_ofl_probability": 75.0,
+      "weekly_alignment_required": true,
+      "rfvg_allowed": false
+    },
+    "minimum_arguments": 3,
+    "data_requirements": {
+      "WEEKLY": {
+        "min_candles": 52,
+        "source": "resampled from D1"
+      },
+      "4H": {
+        "min_candles": 300,
+        "source": "resampled from M1"
+      }
+    },
+    "expected_accuracy": "HIGH",
+    "notes": "Weekly candle science is strongest bias signal. 4H OFL + PFVG adds precision. Three timeframe confluence makes this very high accuracy but setups are less frequent."
+  },
+  {
+    "strategy_id": "1H-S1",
+    "strategy_name": "1H OFL from 4H Context",
+    "category": "INDIVIDUAL_TF",
+    "subcategory": "1H",
+    "description": "4H context area is active with FVG or FVA boundary. 1H creates OFL inside the 4H context in the 4H direction. 1H FVG is PFVG. Time must be in kill zone 2AM-10AM NY. Entry from 1H PFVG. Target is first opposing PDA within 4H context.",
+    "timeframe_stack": [
+      "4H",
+      "1H"
+    ],
+    "entry_timeframe": "1H",
+    "entry_model": "OFL",
+    "instruments": [
+      "EURUSD",
+      "GBPUSD",
+      "XAUUSD"
+    ],
+    "session_filter": {
+      "required": true,
+      "session": "NY_KILLZONE",
+      "start": "08:00",
+      "end": "12:00"
+    },
+    "required_conditions": [
+      {
+        "step": 1,
+        "timeframe": "4H",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "4H"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH"
+          ],
+          "is_active": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "4H context OFL must be HIGH probability and active"
+      },
+      {
+        "step": 2,
+        "timeframe": "1H",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "1H"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH",
+            "MEDIUM"
+          ],
+          "is_active": true,
+          "direction_matches_4h": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "1H OFL must align with 4H direction"
+      },
+      {
+        "step": 3,
+        "timeframe": "1H",
+        "check_type": "FVG",
+        "direction": "BOTH",
+        "module": "modules.video6_fvg_types",
+        "function": "scan_and_classify_all_fvgs",
+        "parameters": {
+          "timeframe": "1H"
+        },
+        "expected_result": {
+          "fvg_type": [
+            "PFVG"
+          ],
+          "is_mitigated": false,
+          "probability_rating": [
+            "HIGH"
+          ]
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "1H PFVG required as entry zone"
+      },
+      {
+        "step": 4,
+        "timeframe": "1H",
+        "check_type": "KILLZONE",
+        "direction": "BOTH",
+        "module": "modules.video9_time",
+        "function": "is_in_killzone",
+        "parameters": {
+          "instrument": "INSTRUMENT"
+        },
+        "expected_result": {
+          "in_killzone": true
+        },
+        "fail_action": "WARN",
+        "description": "Prefer kill zone 8AM-12PM NY for higher probability"
+      }
+    ],
+    "invalidation_conditions": [
+      "4H OFL invalidated",
+      "1H OFL swing point broken",
+      "1H FVG mitigated before entry",
+      "Outside kill zone (warn not fail)"
+    ],
+    "entry_rules": {
+      "trigger": "Retrace into 1H PFVG inside 4H context",
+      "entry_price": "1H FVG high (SHORT) or 1H FVG low (LONG)",
+      "confirmation": "1H candle rejects from FVG",
+      "entry_type": "OFL"
+    },
+    "sl_rules": {
+      "placement": "Above 1H OFL swing high (SHORT) below swing low (LONG)",
+      "buffer_pips": 2,
+      "hard_rule": "SL covers 1H OFL swing \u2014 not just FVG"
+    },
+    "tp_rules": {
+      "structural": {
+        "primary": "First opposing PDA in 4H context",
+        "secondary": "4H ITH or ITL"
+      },
+      "fixed_rr": {
+        "tp1": 2.0,
+        "tp2": 4.0,
+        "tp3": 5.0
+      },
+      "partial_exits": {
+        "at_2r": "Move SL to breakeven",
+        "at_4r": "Close 80 percent",
+        "at_5r": "Close 20 percent remaining"
+      }
+    },
+    "risk_management": {
+      "risk_per_trade_pct": 1.0,
+      "max_trades_per_day": 3,
+      "breakeven_trigger": "1:2",
+      "position_sizing": "equity_percentage"
+    },
+    "filters": {
+      "min_fvg_type": "PFVG",
+      "min_4h_ofl_probability": 75.0,
+      "min_1h_ofl_probability": 60.0,
+      "killzone_preferred": true,
+      "rfvg_allowed": false
+    },
+    "minimum_arguments": 3,
+    "data_requirements": {
+      "4H": {
+        "min_candles": 300,
+        "source": "resampled from M1"
+      },
+      "1H": {
+        "min_candles": 500,
+        "source": "resampled from M1"
+      }
+    },
+    "expected_accuracy": "HIGH",
+    "notes": "Video 11: 4H context + 1H entry = strong setup. Kill zone adds volatility making FVG hold more likely. This is the most commonly used setup in active day trading with MMC."
+  },
+  {
+    "strategy_id": "1H-S2",
+    "strategy_name": "1H Sharp Turn",
+    "category": "INDIVIDUAL_TF",
+    "subcategory": "1H",
+    "description": "4H or Daily context is active. On 1H a sharp turn forms \u2014 FVG in (trap candle) followed by FVG out (confirmation) quickly. Faster the gap between FVG in and FVG out the better the quality. Kill zone active. Entry at FVG out.",
+    "timeframe_stack": [
+      "DAILY",
+      "4H",
+      "1H"
+    ],
+    "entry_timeframe": "1H",
+    "entry_model": "SHARP_TURN",
+    "instruments": [
+      "EURUSD",
+      "GBPUSD",
+      "XAUUSD"
+    ],
+    "session_filter": {
+      "required": true,
+      "session": "NY_KILLZONE",
+      "start": "08:00",
+      "end": "12:00"
+    },
+    "required_conditions": [
+      {
+        "step": 1,
+        "timeframe": "4H",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "4H"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH"
+          ],
+          "is_active": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "4H context must be HIGH probability"
+      },
+      {
+        "step": 2,
+        "timeframe": "1H",
+        "check_type": "FVG",
+        "direction": "BOTH",
+        "module": "modules.video11_entries",
+        "function": "build_sharp_turn",
+        "parameters": {
+          "timeframe": "1H"
+        },
+        "expected_result": {
+          "fvg_in": {
+            "exists": true
+          },
+          "fvg_out": {
+            "exists": true
+          },
+          "speed_quality": [
+            "FAST",
+            "MEDIUM"
+          ],
+          "entry_type": "SHARP_TURN"
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Sharp turn must have both FVG in and FVG out \u2014 FAST preferred"
+      },
+      {
+        "step": 3,
+        "timeframe": "1H",
+        "check_type": "KILLZONE",
+        "direction": "BOTH",
+        "module": "modules.video9_time",
+        "function": "is_in_killzone",
+        "parameters": {
+          "instrument": "INSTRUMENT"
+        },
+        "expected_result": {
+          "in_killzone": true
+        },
+        "fail_action": "WARN",
+        "description": "Kill zone preferred for sharp turns"
+      }
+    ],
+    "invalidation_conditions": [
+      "FVG out never forms after FVG in",
+      "4H context expires before entry",
+      "SLOW speed quality (more than 8 candles between FVG in and out)"
+    ],
+    "entry_rules": {
+      "trigger": "FVG out forms confirming direction",
+      "entry_price": "FVG out high (SHORT) or FVG out low (LONG)",
+      "confirmation": "FVG in and FVG out both present sequentially",
+      "entry_type": "SHARP_TURN"
+    },
+    "sl_rules": {
+      "placement": "Above most recent OFL swing high (SHORT) or below OFL swing low (LONG)",
+      "buffer_pips": 2,
+      "hard_rule": "SL beyond OFL swing not just FVG out"
+    },
+    "tp_rules": {
+      "structural": {
+        "primary": "First opposing PDA on 1H",
+        "secondary": "4H context target"
+      },
+      "fixed_rr": {
+        "tp1": 2.0,
+        "tp2": 4.0,
+        "tp3": 5.0
+      },
+      "partial_exits": {
+        "at_2r": "Move SL to breakeven",
+        "at_4r": "Close 80 percent",
+        "at_5r": "Close 20 percent remaining"
+      }
+    },
+    "risk_management": {
+      "risk_per_trade_pct": 1.0,
+      "max_trades_per_day": 3,
+      "breakeven_trigger": "1:2",
+      "position_sizing": "equity_percentage"
+    },
+    "filters": {
+      "min_speed_quality": "MEDIUM",
+      "slow_sharp_turns_allowed": false,
+      "min_4h_ofl_probability": 75.0,
+      "rfvg_in_allowed": false,
+      "rfvg_out_allowed": false
+    },
+    "minimum_arguments": 2,
+    "data_requirements": {
+      "4H": {
+        "min_candles": 300,
+        "source": "resampled from M1"
+      },
+      "1H": {
+        "min_candles": 500,
+        "source": "resampled from M1"
+      }
+    },
+    "expected_accuracy": "MEDIUM",
+    "notes": "Video 11: Sharp turn = manipulation trap. FVG in traps traders. FVG out confirms reversal. Faster = better. FAST sharp turns in kill zone = highest accuracy version."
+  },
+  {
+    "strategy_id": "1H-S3",
+    "strategy_name": "1H MSS + FVG ICT 2022",
+    "category": "INDIVIDUAL_TF",
+    "subcategory": "1H",
+    "description": "1H BSL or SSL is swept creating MSS on 1H. FVG forms in new direction confirming MSS. 4H direction aligns. Entry in kill zone into 1H MSS FVG. ICT 2022 model on 1H timeframe.",
+    "timeframe_stack": [
+      "4H",
+      "1H"
+    ],
+    "entry_timeframe": "1H",
+    "entry_model": "MSS_FVG",
+    "instruments": [
+      "EURUSD",
+      "GBPUSD",
+      "XAUUSD"
+    ],
+    "session_filter": {
+      "required": true,
+      "session": "NY_KILLZONE",
+      "start": "08:00",
+      "end": "12:00"
+    },
+    "required_conditions": [
+      {
+        "step": 1,
+        "timeframe": "4H",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "4H"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH"
+          ],
+          "is_active": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "4H direction must be HIGH probability"
+      },
+      {
+        "step": 2,
+        "timeframe": "1H",
+        "check_type": "SWEEP",
+        "direction": "BOTH",
+        "module": "modules.video8_sweeps",
+        "function": "scan_candles_for_sweeps",
+        "parameters": {
+          "timeframe": "1H"
+        },
+        "expected_result": {
+          "liquidity_event": "SWEEP",
+          "probability_score": {
+            "min": 65.0
+          },
+          "sweep_direction_matches_4h": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "1H sweep must align with 4H direction"
+      },
+      {
+        "step": 3,
+        "timeframe": "1H",
+        "check_type": "MSS",
+        "direction": "BOTH",
+        "module": "modules.video8_sweeps",
+        "function": "detect_order_flow_sweep",
+        "parameters": {
+          "timeframe": "1H"
+        },
+        "expected_result": {
+          "is_ofl_sweep": true,
+          "continuation_fvg": {
+            "exists": true
+          }
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "MSS confirmed by continuation FVG"
+      },
+      {
+        "step": 4,
+        "timeframe": "1H",
+        "check_type": "KILLZONE",
+        "direction": "BOTH",
+        "module": "modules.video9_time",
+        "function": "is_in_killzone",
+        "parameters": {
+          "instrument": "INSTRUMENT"
+        },
+        "expected_result": {
+          "in_killzone": true
+        },
+        "fail_action": "WARN",
+        "description": "Kill zone preferred for 1H MSS"
+      }
+    ],
+    "invalidation_conditions": [
+      "Price closes back beyond swept level",
+      "4H direction invalidated",
+      "MSS FVG mitigated before entry"
+    ],
+    "entry_rules": {
+      "trigger": "Retrace into 1H MSS FVG",
+      "entry_price": "FVG high (SHORT) or FVG low (LONG)",
+      "confirmation": "Rejection from MSS FVG",
+      "entry_type": "MSS_FVG"
+    },
+    "sl_rules": {
+      "placement": "Beyond swept level high (SHORT) or low (LONG)",
+      "buffer_pips": 2,
+      "hard_rule": "SL beyond swept liquidity"
+    },
+    "tp_rules": {
+      "structural": {
+        "primary": "1H ITH or ITL",
+        "secondary": "4H target BSL or SSL"
+      },
+      "fixed_rr": {
+        "tp1": 2.0,
+        "tp2": 4.0,
+        "tp3": 5.0
+      },
+      "partial_exits": {
+        "at_2r": "Move SL to breakeven",
+        "at_4r": "Close 80 percent",
+        "at_5r": "Close 20 percent remaining"
+      }
+    },
+    "risk_management": {
+      "risk_per_trade_pct": 1.0,
+      "max_trades_per_day": 3,
+      "breakeven_trigger": "1:2",
+      "position_sizing": "equity_percentage"
+    },
+    "filters": {
+      "min_fvg_type": "PFVG",
+      "min_sweep_probability": 65.0,
+      "mss_required": true,
+      "killzone_preferred": true,
+      "rfvg_allowed": false,
+      "daily_4h_alignment_required": true
+    },
+    "minimum_arguments": 3,
+    "data_requirements": {
+      "4H": {
+        "min_candles": 300,
+        "source": "resampled from M1"
+      },
+      "1H": {
+        "min_candles": 500,
+        "source": "resampled from M1"
+      }
+    },
+    "expected_accuracy": "HIGH",
+    "notes": "ICT 2022 on 1H. Most powerful in kill zone when 4H is HIGH probability. MSS + FVG = double confirmation of direction shift. High accuracy when all 3 TF align."
+  },
+  {
+    "strategy_id": "1H-S4",
+    "strategy_name": "1H OFL Sweep Entry",
+    "category": "INDIVIDUAL_TF",
+    "subcategory": "1H",
+    "description": "1H OFL forms. Price enters the FVG but fails to reject leaving behind a swing point with no FVG. That swing point gets swept and a new FVG forms post sweep. Entry from post-sweep FVG. This is the LOD sweep setup from Video 8 on the 1H timeframe.",
+    "timeframe_stack": [
+      "4H",
+      "1H"
+    ],
+    "entry_timeframe": "1H",
+    "entry_model": "OFL",
+    "instruments": [
+      "EURUSD",
+      "GBPUSD",
+      "XAUUSD"
+    ],
+    "session_filter": {
+      "required": true,
+      "session": "NY_KILLZONE",
+      "start": "08:00",
+      "end": "12:00"
+    },
+    "required_conditions": [
+      {
+        "step": 1,
+        "timeframe": "4H",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "4H"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH"
+          ],
+          "is_active": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "4H must be HIGH probability OFL"
+      },
+      {
+        "step": 2,
+        "timeframe": "1H",
+        "check_type": "SWEEP",
+        "direction": "BOTH",
+        "module": "modules.video8_sweeps",
+        "function": "detect_order_flow_sweep",
+        "parameters": {
+          "timeframe": "1H"
+        },
+        "expected_result": {
+          "is_ofl_sweep": true,
+          "sweep_type": "ORDER_FLOW_SWEEP",
+          "continuation_fvg": {
+            "exists": true
+          }
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "1H OFL swing must be swept with continuation FVG"
+      },
+      {
+        "step": 3,
+        "timeframe": "1H",
+        "check_type": "FVG",
+        "direction": "BOTH",
+        "module": "modules.video6_fvg_types",
+        "function": "scan_and_classify_all_fvgs",
+        "parameters": {
+          "timeframe": "1H"
+        },
+        "expected_result": {
+          "fvg_type": [
+            "PFVG"
+          ],
+          "after_sweep": true,
+          "is_mitigated": false
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Post-sweep PFVG required for entry"
+      }
+    ],
+    "invalidation_conditions": [
+      "Swing point runs instead of sweeps",
+      "No FVG forms after sweep",
+      "4H OFL invalidated"
+    ],
+    "entry_rules": {
+      "trigger": "Retrace into post-sweep 1H PFVG",
+      "entry_price": "1H FVG high (SHORT) or 1H FVG low (LONG)",
+      "confirmation": "Rejection from post-sweep FVG",
+      "entry_type": "OFL"
+    },
+    "sl_rules": {
+      "placement": "Below swept swing low (LONG) above swept swing high (SHORT)",
+      "buffer_pips": 2,
+      "hard_rule": "SL beyond swept level"
+    },
+    "tp_rules": {
+      "structural": {
+        "primary": "First opposing PDA on 1H",
+        "secondary": "4H context target"
+      },
+      "fixed_rr": {
+        "tp1": 2.0,
+        "tp2": 4.0,
+        "tp3": 5.0
+      },
+      "partial_exits": {
+        "at_2r": "Move SL to breakeven",
+        "at_4r": "Close 80 percent",
+        "at_5r": "Close 20 percent remaining"
+      }
+    },
+    "risk_management": {
+      "risk_per_trade_pct": 1.0,
+      "max_trades_per_day": 3,
+      "breakeven_trigger": "1:2",
+      "position_sizing": "equity_percentage"
+    },
+    "filters": {
+      "min_fvg_type": "PFVG",
+      "ofl_sweep_required": true,
+      "continuation_fvg_required": true,
+      "rfvg_allowed": false
+    },
+    "minimum_arguments": 2,
+    "data_requirements": {
+      "4H": {
+        "min_candles": 300,
+        "source": "resampled from M1"
+      },
+      "1H": {
+        "min_candles": 500,
+        "source": "resampled from M1"
+      }
+    },
+    "expected_accuracy": "MEDIUM",
+    "notes": "Video 8: OFL sweep = price enters FVG, fails to reject, sweeps remaining swing. Post-sweep FVG = entry. Good setup when original FVG fails to hold first time."
+  },
+  {
+    "strategy_id": "1H-S5",
+    "strategy_name": "1H Candle Science Sweep",
+    "category": "INDIVIDUAL_TF",
+    "subcategory": "1H",
+    "description": "4H context active. 1H candle enters context area but first candle does not reject. Second candle sweeps PCH or PCL. FVG created after sweep. Entry from post-PCH/PCL sweep FVG. Candle science sweep from Video 8 on 1H timeframe.",
+    "timeframe_stack": [
+      "4H",
+      "1H"
+    ],
+    "entry_timeframe": "1H",
+    "entry_model": "MSS_FVG",
+    "instruments": [
+      "EURUSD",
+      "GBPUSD",
+      "XAUUSD"
+    ],
+    "session_filter": {
+      "required": true,
+      "session": "NY_KILLZONE",
+      "start": "08:00",
+      "end": "12:00"
+    },
+    "required_conditions": [
+      {
+        "step": 1,
+        "timeframe": "4H",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "4H"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH"
+          ],
+          "is_active": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "4H context must be active and HIGH probability"
+      },
+      {
+        "step": 2,
+        "timeframe": "1H",
+        "check_type": "SWEEP",
+        "direction": "BOTH",
+        "module": "modules.video8_sweeps",
+        "function": "detect_candle_science_sweep",
+        "parameters": {
+          "timeframe": "1H"
+        },
+        "expected_result": {
+          "is_cs_sweep": true,
+          "swept_level": {
+            "exists": true
+          }
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "PCH or PCL must be swept on 1H"
+      },
+      {
+        "step": 3,
+        "timeframe": "1H",
+        "check_type": "FVG",
+        "direction": "BOTH",
+        "module": "modules.video6_fvg_types",
+        "function": "scan_and_classify_all_fvgs",
+        "parameters": {
+          "timeframe": "1H"
+        },
+        "expected_result": {
+          "fvg_type": [
+            "PFVG"
+          ],
+          "after_sweep": true,
+          "is_mitigated": false
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "PFVG must form after PCH/PCL sweep"
+      }
+    ],
+    "invalidation_conditions": [
+      "First candle rejects (not a CS sweep setup)",
+      "No FVG after sweep",
+      "4H context expires"
+    ],
+    "entry_rules": {
+      "trigger": "Retrace into post-CS-sweep PFVG",
+      "entry_price": "FVG high (SHORT) or FVG low (LONG)",
+      "confirmation": "Rejection from post-sweep FVG",
+      "entry_type": "MSS_FVG"
+    },
+    "sl_rules": {
+      "placement": "Beyond swept PCH (SHORT) or PCL (LONG)",
+      "buffer_pips": 2,
+      "hard_rule": "SL beyond swept candle level"
+    },
+    "tp_rules": {
+      "structural": {
+        "primary": "First opposing PDA on 1H",
+        "secondary": "4H target"
+      },
+      "fixed_rr": {
+        "tp1": 2.0,
+        "tp2": 4.0,
+        "tp3": 5.0
+      },
+      "partial_exits": {
+        "at_2r": "Move SL to breakeven",
+        "at_4r": "Close 80 percent",
+        "at_5r": "Close 20 percent remaining"
+      }
+    },
+    "risk_management": {
+      "risk_per_trade_pct": 1.0,
+      "max_trades_per_day": 3,
+      "breakeven_trigger": "1:2",
+      "position_sizing": "equity_percentage"
+    },
+    "filters": {
+      "min_fvg_type": "PFVG",
+      "cs_sweep_required": true,
+      "first_candle_must_not_reject": true,
+      "rfvg_allowed": false
+    },
+    "minimum_arguments": 2,
+    "data_requirements": {
+      "4H": {
+        "min_candles": 300,
+        "source": "resampled from M1"
+      },
+      "1H": {
+        "min_candles": 500,
+        "source": "resampled from M1"
+      }
+    },
+    "expected_accuracy": "MEDIUM",
+    "notes": "Video 8: CS sweep = first candle no rejection then PCH/PCL swept. Traps traders expecting immediate reversal. Post-sweep FVG = clean entry. Good setup in kill zone."
+  },
+  {
+    "strategy_id": "TD-FP-S1",
+    "strategy_name": "Full Stack Filtering Process Monthly to 4H",
+    "category": "TOP_DOWN",
+    "subcategory": "FILTERING_PROCESS",
+    "description": "Full top-down analysis from Monthly to 4H entry. Monthly candle science sets macro bias. Weekly candle science confirms. Daily OFL sets direction and FVG target. 4H context area provides entry zone. Minimum 3 arguments on one side required. No mixed signals allowed. Highest probability filtering setup.",
+    "timeframe_stack": [
+      "MONTHLY",
+      "WEEKLY",
+      "DAILY",
+      "4H"
+    ],
+    "entry_timeframe": "4H",
+    "entry_model": "OFL",
+    "instruments": [
+      "EURUSD",
+      "GBPUSD",
+      "XAUUSD"
+    ],
+    "session_filter": {
+      "required": false,
+      "session": "ANY",
+      "start": "00:00",
+      "end": "23:59"
+    },
+    "required_conditions": [
+      {
+        "step": 1,
+        "timeframe": "MONTHLY",
+        "check_type": "CANDLE_SCIENCE",
+        "direction": "BOTH",
+        "module": "modules.video5_candle_science",
+        "function": "analyze_single_candle",
+        "parameters": {
+          "timeframe": "MONTHLY"
+        },
+        "expected_result": {
+          "candle_type": [
+            "DISRESPECT_BULLISH",
+            "DISRESPECT_BEARISH",
+            "RESPECT_BULLISH",
+            "RESPECT_BEARISH"
+          ],
+          "confidence_score": {
+            "min": 65.0
+          }
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Monthly candle science must give clear directional signal"
+      },
+      {
+        "step": 2,
+        "timeframe": "WEEKLY",
+        "check_type": "CANDLE_SCIENCE",
+        "direction": "BOTH",
+        "module": "modules.video5_candle_science",
+        "function": "analyze_single_candle",
+        "parameters": {
+          "timeframe": "WEEKLY"
+        },
+        "expected_result": {
+          "candle_type": [
+            "DISRESPECT_BULLISH",
+            "DISRESPECT_BEARISH",
+            "RESPECT_BULLISH",
+            "RESPECT_BEARISH"
+          ],
+          "expected_next_matches_monthly": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Weekly candle science must confirm monthly direction"
+      },
+      {
+        "step": 3,
+        "timeframe": "DAILY",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH"
+          ],
+          "is_active": true,
+          "direction_matches_weekly": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Daily OFL must be HIGH probability aligning with weekly"
+      },
+      {
+        "step": 4,
+        "timeframe": "4H",
+        "check_type": "FVG",
+        "direction": "BOTH",
+        "module": "modules.video6_fvg_types",
+        "function": "scan_and_classify_all_fvgs",
+        "parameters": {
+          "timeframe": "4H"
+        },
+        "expected_result": {
+          "fvg_type": [
+            "PFVG"
+          ],
+          "is_mitigated": false,
+          "probability_rating": [
+            "HIGH"
+          ]
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "4H PFVG required as entry zone"
+      }
+    ],
+    "invalidation_conditions": [
+      "Arguments drop below 3 on dominant side",
+      "Monthly or weekly candle science flips direction",
+      "Daily OFL invalidated",
+      "4H PFVG mitigated before entry"
+    ],
+    "entry_rules": {
+      "trigger": "Price retraces into 4H PFVG inside daily context",
+      "entry_price": "4H FVG high (SHORT) or 4H FVG low (LONG)",
+      "confirmation": "4H candle rejection from FVG",
+      "entry_type": "OFL"
+    },
+    "sl_rules": {
+      "placement": "Above 4H OFL swing high (SHORT) below swing low (LONG)",
+      "buffer_pips": 3,
+      "hard_rule": "SL beyond 4H OFL swing"
+    },
+    "tp_rules": {
+      "structural": {
+        "primary": "Daily BSL or SSL",
+        "secondary": "Daily or Weekly ITH ITL"
+      },
+      "fixed_rr": {
+        "tp1": 2.0,
+        "tp2": 4.0,
+        "tp3": 5.0
+      },
+      "partial_exits": {
+        "at_2r": "Move SL to breakeven",
+        "at_4r": "Close 80 percent",
+        "at_5r": "Close 20 percent remaining"
+      }
+    },
+    "risk_management": {
+      "risk_per_trade_pct": 1.0,
+      "max_trades_per_day": 1,
+      "breakeven_trigger": "1:2",
+      "position_sizing": "equity_percentage"
+    },
+    "filters": {
+      "min_fvg_type": "PFVG",
+      "min_monthly_cs_confidence": 65.0,
+      "min_weekly_cs_confidence": 60.0,
+      "min_daily_ofl_probability": 75.0,
+      "min_4h_ofl_probability": 70.0,
+      "minimum_arguments": 3,
+      "mixed_signals_allowed": false,
+      "rfvg_allowed": false
+    },
+    "minimum_arguments": 3,
+    "data_requirements": {
+      "MONTHLY": {
+        "min_candles": 24,
+        "source": "resampled from D1"
+      },
+      "WEEKLY": {
+        "min_candles": 52,
+        "source": "resampled from D1"
+      },
+      "DAILY": {
+        "min_candles": 200,
+        "source": "D1 CSV"
+      },
+      "4H": {
+        "min_candles": 500,
+        "source": "resampled from M1"
+      }
+    },
+    "expected_accuracy": "HIGH",
+    "notes": "Video 12: Full filtering process. Monthly+Weekly CS confirms macro bias. Daily OFL gives direction. 4H gives entry. Minimum 3 arguments mandatory. Fewer setups but highest accuracy."
+  },
+  {
+    "strategy_id": "TD-FP-S2",
+    "strategy_name": "Weekly to 1H Filtering Process",
+    "category": "TOP_DOWN",
+    "subcategory": "FILTERING_PROCESS",
+    "description": "Weekly candle science sets macro bias. Daily OFL confirms. 4H context provides target. 1H PFVG provides entry precision in killzone.",
+    "timeframe_stack": [
+      "WEEKLY",
+      "DAILY",
+      "4H",
+      "1H"
+    ],
+    "entry_timeframe": "1H",
+    "entry_model": "OFL",
+    "instruments": [
+      "EURUSD",
+      "GBPUSD",
+      "XAUUSD"
+    ],
+    "session_filter": {
+      "required": true,
+      "session": "NY_KILLZONE",
+      "start": "08:00",
+      "end": "12:00"
+    },
+    "required_conditions": [
+      {
+        "step": 1,
+        "timeframe": "MONTHLY",
+        "check_type": "CANDLE_SCIENCE",
+        "direction": "BOTH",
+        "module": "modules.video5_candle_science",
+        "function": "analyze_single_candle",
+        "parameters": {
+          "timeframe": "MONTHLY"
+        },
+        "expected_result": {
+          "candle_type": [
+            "DISRESPECT_BULLISH",
+            "DISRESPECT_BEARISH",
+            "RESPECT_BULLISH",
+            "RESPECT_BEARISH"
+          ],
+          "confidence_score": {
+            "min": 65.0
+          }
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Monthly candle science must give clear directional signal"
+      },
+      {
+        "step": 2,
+        "timeframe": "WEEKLY",
+        "check_type": "CANDLE_SCIENCE",
+        "direction": "BOTH",
+        "module": "modules.video5_candle_science",
+        "function": "analyze_single_candle",
+        "parameters": {
+          "timeframe": "WEEKLY"
+        },
+        "expected_result": {
+          "candle_type": [
+            "DISRESPECT_BULLISH",
+            "DISRESPECT_BEARISH",
+            "RESPECT_BULLISH",
+            "RESPECT_BEARISH"
+          ],
+          "expected_next_matches_monthly": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Weekly candle science must confirm monthly direction"
+      },
+      {
+        "step": 3,
+        "timeframe": "DAILY",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH"
+          ],
+          "is_active": true,
+          "direction_matches_weekly": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Daily OFL must be HIGH probability aligning with weekly"
+      },
+      {
+        "step": 4,
+        "timeframe": "4H",
+        "check_type": "FVG",
+        "direction": "BOTH",
+        "module": "modules.video6_fvg_types",
+        "function": "scan_and_classify_all_fvgs",
+        "parameters": {
+          "timeframe": "4H"
+        },
+        "expected_result": {
+          "fvg_type": [
+            "PFVG"
+          ],
+          "is_mitigated": false,
+          "probability_rating": [
+            "HIGH"
+          ]
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "4H PFVG required as entry zone"
+      }
+    ],
+    "invalidation_conditions": [
+      "Arguments drop below 3 on dominant side",
+      "Monthly or weekly candle science flips direction",
+      "Daily OFL invalidated",
+      "4H PFVG mitigated before entry"
+    ],
+    "entry_rules": {
+      "trigger": "Price retraces into 4H PFVG inside daily context",
+      "entry_price": "4H FVG high (SHORT) or 4H FVG low (LONG)",
+      "confirmation": "4H candle rejection from FVG",
+      "entry_type": "OFL"
+    },
+    "sl_rules": {
+      "placement": "Above 4H OFL swing high (SHORT) below swing low (LONG)",
+      "buffer_pips": 3,
+      "hard_rule": "SL beyond 4H OFL swing"
+    },
+    "tp_rules": {
+      "structural": {
+        "primary": "Daily BSL or SSL",
+        "secondary": "Daily or Weekly ITH ITL"
+      },
+      "fixed_rr": {
+        "tp1": 2.0,
+        "tp2": 4.0,
+        "tp3": 5.0
+      },
+      "partial_exits": {
+        "at_2r": "Move SL to breakeven",
+        "at_4r": "Close 80 percent",
+        "at_5r": "Close 20 percent remaining"
+      }
+    },
+    "risk_management": {
+      "risk_per_trade_pct": 1.0,
+      "max_trades_per_day": 1,
+      "breakeven_trigger": "1:2",
+      "position_sizing": "equity_percentage"
+    },
+    "filters": {
+      "min_fvg_type": "PFVG",
+      "min_monthly_cs_confidence": 65.0,
+      "min_weekly_cs_confidence": 60.0,
+      "min_daily_ofl_probability": 75.0,
+      "min_4h_ofl_probability": 70.0,
+      "minimum_arguments": 3,
+      "mixed_signals_allowed": false,
+      "rfvg_allowed": false
+    },
+    "minimum_arguments": 3,
+    "data_requirements": {
+      "MONTHLY": {
+        "min_candles": 24,
+        "source": "resampled from D1"
+      },
+      "WEEKLY": {
+        "min_candles": 52,
+        "source": "resampled from D1"
+      },
+      "DAILY": {
+        "min_candles": 200,
+        "source": "D1 CSV"
+      },
+      "4H": {
+        "min_candles": 500,
+        "source": "resampled from M1"
+      }
+    },
+    "expected_accuracy": "HIGH",
+    "notes": "Video 12: Full filtering process. Monthly+Weekly CS confirms macro bias. Daily OFL gives direction. 4H gives entry. Minimum 3 arguments mandatory. Fewer setups but highest accuracy."
+  },
+  {
+    "strategy_id": "TD-FP-S3",
+    "strategy_name": "Daily to 15M Filtering Process",
+    "category": "TOP_DOWN",
+    "subcategory": "FILTERING_PROCESS",
+    "description": "Daily candle science sets macro bias. 1H OFL confirms. 15M PFVG provides entry precision.",
+    "timeframe_stack": [
+      "DAILY",
+      "4H",
+      "1H",
+      "15M"
+    ],
+    "entry_timeframe": "15M",
+    "entry_model": "OFL",
+    "instruments": [
+      "EURUSD",
+      "GBPUSD",
+      "XAUUSD"
+    ],
+    "session_filter": {
+      "required": false,
+      "session": "ANY",
+      "start": "00:00",
+      "end": "23:59"
+    },
+    "required_conditions": [
+      {
+        "step": 1,
+        "timeframe": "MONTHLY",
+        "check_type": "CANDLE_SCIENCE",
+        "direction": "BOTH",
+        "module": "modules.video5_candle_science",
+        "function": "analyze_single_candle",
+        "parameters": {
+          "timeframe": "MONTHLY"
+        },
+        "expected_result": {
+          "candle_type": [
+            "DISRESPECT_BULLISH",
+            "DISRESPECT_BEARISH",
+            "RESPECT_BULLISH",
+            "RESPECT_BEARISH"
+          ],
+          "confidence_score": {
+            "min": 65.0
+          }
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Monthly candle science must give clear directional signal"
+      },
+      {
+        "step": 2,
+        "timeframe": "WEEKLY",
+        "check_type": "CANDLE_SCIENCE",
+        "direction": "BOTH",
+        "module": "modules.video5_candle_science",
+        "function": "analyze_single_candle",
+        "parameters": {
+          "timeframe": "WEEKLY"
+        },
+        "expected_result": {
+          "candle_type": [
+            "DISRESPECT_BULLISH",
+            "DISRESPECT_BEARISH",
+            "RESPECT_BULLISH",
+            "RESPECT_BEARISH"
+          ],
+          "expected_next_matches_monthly": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Weekly candle science must confirm monthly direction"
+      },
+      {
+        "step": 3,
+        "timeframe": "DAILY",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH"
+          ],
+          "is_active": true,
+          "direction_matches_weekly": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Daily OFL must be HIGH probability aligning with weekly"
+      },
+      {
+        "step": 4,
+        "timeframe": "4H",
+        "check_type": "FVG",
+        "direction": "BOTH",
+        "module": "modules.video6_fvg_types",
+        "function": "scan_and_classify_all_fvgs",
+        "parameters": {
+          "timeframe": "4H"
+        },
+        "expected_result": {
+          "fvg_type": [
+            "PFVG"
+          ],
+          "is_mitigated": false,
+          "probability_rating": [
+            "HIGH"
+          ]
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "4H PFVG required as entry zone"
+      }
+    ],
+    "invalidation_conditions": [
+      "Arguments drop below 3 on dominant side",
+      "Monthly or weekly candle science flips direction",
+      "Daily OFL invalidated",
+      "4H PFVG mitigated before entry"
+    ],
+    "entry_rules": {
+      "trigger": "Price retraces into 4H PFVG inside daily context",
+      "entry_price": "4H FVG high (SHORT) or 4H FVG low (LONG)",
+      "confirmation": "4H candle rejection from FVG",
+      "entry_type": "OFL"
+    },
+    "sl_rules": {
+      "placement": "Above 4H OFL swing high (SHORT) below swing low (LONG)",
+      "buffer_pips": 3,
+      "hard_rule": "SL beyond 4H OFL swing"
+    },
+    "tp_rules": {
+      "structural": {
+        "primary": "Daily BSL or SSL",
+        "secondary": "Daily or Weekly ITH ITL"
+      },
+      "fixed_rr": {
+        "tp1": 2.0,
+        "tp2": 4.0,
+        "tp3": 5.0
+      },
+      "partial_exits": {
+        "at_2r": "Move SL to breakeven",
+        "at_4r": "Close 80 percent",
+        "at_5r": "Close 20 percent remaining"
+      }
+    },
+    "risk_management": {
+      "risk_per_trade_pct": 1.0,
+      "max_trades_per_day": 1,
+      "breakeven_trigger": "1:2",
+      "position_sizing": "equity_percentage"
+    },
+    "filters": {
+      "min_fvg_type": "PFVG",
+      "min_monthly_cs_confidence": 65.0,
+      "min_weekly_cs_confidence": 60.0,
+      "min_daily_ofl_probability": 75.0,
+      "min_4h_ofl_probability": 70.0,
+      "minimum_arguments": 3,
+      "mixed_signals_allowed": false,
+      "rfvg_allowed": false
+    },
+    "minimum_arguments": 3,
+    "data_requirements": {
+      "MONTHLY": {
+        "min_candles": 24,
+        "source": "resampled from D1"
+      },
+      "WEEKLY": {
+        "min_candles": 52,
+        "source": "resampled from D1"
+      },
+      "DAILY": {
+        "min_candles": 200,
+        "source": "D1 CSV"
+      },
+      "4H": {
+        "min_candles": 500,
+        "source": "resampled from M1"
+      }
+    },
+    "expected_accuracy": "HIGH",
+    "notes": "Video 12: Full filtering process. Monthly+Weekly CS confirms macro bias. Daily OFL gives direction. 4H gives entry. Minimum 3 arguments mandatory. Fewer setups but highest accuracy."
+  },
+  {
+    "strategy_id": "TD-FP-S4",
+    "strategy_name": "Monthly to 15M Aggressive Stack",
+    "category": "TOP_DOWN",
+    "subcategory": "FILTERING_PROCESS",
+    "description": "Monthly candle science. Daily OFL. 1H structural target. 15M entry.",
+    "timeframe_stack": [
+      "MONTHLY",
+      "DAILY",
+      "1H",
+      "15M"
+    ],
+    "entry_timeframe": "15M",
+    "entry_model": "OFL",
+    "instruments": [
+      "EURUSD",
+      "GBPUSD",
+      "XAUUSD"
+    ],
+    "session_filter": {
+      "required": false,
+      "session": "ANY",
+      "start": "00:00",
+      "end": "23:59"
+    },
+    "required_conditions": [
+      {
+        "step": 1,
+        "timeframe": "MONTHLY",
+        "check_type": "CANDLE_SCIENCE",
+        "direction": "BOTH",
+        "module": "modules.video5_candle_science",
+        "function": "analyze_single_candle",
+        "parameters": {
+          "timeframe": "MONTHLY"
+        },
+        "expected_result": {
+          "candle_type": [
+            "DISRESPECT_BULLISH",
+            "DISRESPECT_BEARISH",
+            "RESPECT_BULLISH",
+            "RESPECT_BEARISH"
+          ],
+          "confidence_score": {
+            "min": 65.0
+          }
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Monthly candle science must give clear directional signal"
+      },
+      {
+        "step": 2,
+        "timeframe": "WEEKLY",
+        "check_type": "CANDLE_SCIENCE",
+        "direction": "BOTH",
+        "module": "modules.video5_candle_science",
+        "function": "analyze_single_candle",
+        "parameters": {
+          "timeframe": "WEEKLY"
+        },
+        "expected_result": {
+          "candle_type": [
+            "DISRESPECT_BULLISH",
+            "DISRESPECT_BEARISH",
+            "RESPECT_BULLISH",
+            "RESPECT_BEARISH"
+          ],
+          "expected_next_matches_monthly": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Weekly candle science must confirm monthly direction"
+      },
+      {
+        "step": 3,
+        "timeframe": "DAILY",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH"
+          ],
+          "is_active": true,
+          "direction_matches_weekly": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Daily OFL must be HIGH probability aligning with weekly"
+      },
+      {
+        "step": 4,
+        "timeframe": "4H",
+        "check_type": "FVG",
+        "direction": "BOTH",
+        "module": "modules.video6_fvg_types",
+        "function": "scan_and_classify_all_fvgs",
+        "parameters": {
+          "timeframe": "4H"
+        },
+        "expected_result": {
+          "fvg_type": [
+            "PFVG"
+          ],
+          "is_mitigated": false,
+          "probability_rating": [
+            "HIGH"
+          ]
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "4H PFVG required as entry zone"
+      }
+    ],
+    "invalidation_conditions": [
+      "Arguments drop below 3 on dominant side",
+      "Monthly or weekly candle science flips direction",
+      "Daily OFL invalidated",
+      "4H PFVG mitigated before entry"
+    ],
+    "entry_rules": {
+      "trigger": "Price retraces into 4H PFVG inside daily context",
+      "entry_price": "4H FVG high (SHORT) or 4H FVG low (LONG)",
+      "confirmation": "4H candle rejection from FVG",
+      "entry_type": "OFL"
+    },
+    "sl_rules": {
+      "placement": "Above 4H OFL swing high (SHORT) below swing low (LONG)",
+      "buffer_pips": 3,
+      "hard_rule": "SL beyond 4H OFL swing"
+    },
+    "tp_rules": {
+      "structural": {
+        "primary": "Daily BSL or SSL",
+        "secondary": "Daily or Weekly ITH ITL"
+      },
+      "fixed_rr": {
+        "tp1": 2.0,
+        "tp2": 4.0,
+        "tp3": 5.0
+      },
+      "partial_exits": {
+        "at_2r": "Move SL to breakeven",
+        "at_4r": "Close 80 percent",
+        "at_5r": "Close 20 percent remaining"
+      }
+    },
+    "risk_management": {
+      "risk_per_trade_pct": 1.0,
+      "max_trades_per_day": 1,
+      "breakeven_trigger": "1:2",
+      "position_sizing": "equity_percentage"
+    },
+    "filters": {
+      "min_fvg_type": "PFVG",
+      "min_monthly_cs_confidence": 65.0,
+      "min_weekly_cs_confidence": 60.0,
+      "min_daily_ofl_probability": 75.0,
+      "min_4h_ofl_probability": 70.0,
+      "minimum_arguments": 3,
+      "mixed_signals_allowed": false,
+      "rfvg_allowed": false
+    },
+    "minimum_arguments": 3,
+    "data_requirements": {
+      "MONTHLY": {
+        "min_candles": 24,
+        "source": "resampled from D1"
+      },
+      "WEEKLY": {
+        "min_candles": 52,
+        "source": "resampled from D1"
+      },
+      "DAILY": {
+        "min_candles": 200,
+        "source": "D1 CSV"
+      },
+      "4H": {
+        "min_candles": 500,
+        "source": "resampled from M1"
+      }
+    },
+    "expected_accuracy": "HIGH",
+    "notes": "Video 12: Full filtering process. Monthly+Weekly CS confirms macro bias. Daily OFL gives direction. 4H gives entry. Minimum 3 arguments mandatory. Fewer setups but highest accuracy."
+  },
+  {
+    "strategy_id": "TD-FT-S1",
+    "strategy_name": "NY Session 5M Flow Trader OFL + MSS Double Confirm",
+    "category": "TOP_DOWN",
+    "subcategory": "FLOW_TRADER",
+    "description": "The primary high accuracy flow trader strategy. Daily sets direction via OFL. 4H provides FVA context area. 1H confirms with OFL. 15M shows MSS or OFL setup forming. 5M provides precise entry via PFVG. Must be in NY session 8AM-12PM ET. Both OFL and MSS present = double confirmation boom. This is the highest accuracy flow trader setup in the MMC system.",
+    "timeframe_stack": [
+      "DAILY",
+      "4H",
+      "1H",
+      "15M",
+      "5M"
+    ],
+    "entry_timeframe": "5M",
+    "entry_model": "DOUBLE_CONFIRM",
+    "instruments": [
+      "EURUSD",
+      "GBPUSD",
+      "XAUUSD"
+    ],
+    "session_filter": {
+      "required": true,
+      "session": "NY_SESSION",
+      "start": "08:00",
+      "end": "12:00"
+    },
+    "required_conditions": [
+      {
+        "step": 1,
+        "timeframe": "DAILY",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH"
+          ],
+          "is_active": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Daily OFL must be HIGH probability \u2014 sets macro direction"
+      },
+      {
+        "step": 2,
+        "timeframe": "4H",
+        "check_type": "FVA",
+        "direction": "BOTH",
+        "module": "modules.video7_fva_types",
+        "function": "scan_and_classify_all_fvas",
+        "parameters": {
+          "timeframe": "4H"
+        },
+        "expected_result": {
+          "fva_type": [
+            "IDEAL",
+            "GOOD"
+          ],
+          "has_overlapping_fvg": true,
+          "probability_score": {
+            "min": 70.0
+          },
+          "direction_matches_daily": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "4H FVA must be IDEAL or GOOD confirming daily direction"
+      },
+      {
+        "step": 3,
+        "timeframe": "1H",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "1H"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH",
+            "MEDIUM"
+          ],
+          "is_active": true,
+          "direction_matches_daily": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "1H OFL must confirm daily and 4H direction"
+      },
+      {
+        "step": 4,
+        "timeframe": "15M",
+        "check_type": "MSS",
+        "direction": "BOTH",
+        "module": "modules.video8_sweeps",
+        "function": "detect_order_flow_sweep",
+        "parameters": {
+          "timeframe": "15M"
+        },
+        "expected_result": {
+          "is_ofl_sweep": true,
+          "continuation_fvg": {
+            "exists": true
+          },
+          "direction_matches_daily": true
+        },
+        "fail_action": "REDUCE_CONFIRM",
+        "description": "15M MSS preferred \u2014 if absent fall back to OFL only"
+      },
+      {
+        "step": 5,
+        "timeframe": "15M",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "15M"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH",
+            "MEDIUM"
+          ],
+          "is_active": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "15M OFL must be active regardless of MSS presence"
+      },
+      {
+        "step": 6,
+        "timeframe": "5M",
+        "check_type": "FVG",
+        "direction": "BOTH",
+        "module": "modules.video6_fvg_types",
+        "function": "scan_and_classify_all_fvgs",
+        "parameters": {
+          "timeframe": "5M"
+        },
+        "expected_result": {
+          "fvg_type": [
+            "PFVG"
+          ],
+          "is_mitigated": false,
+          "probability_rating": [
+            "HIGH"
+          ]
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "5M PFVG required as final entry zone"
+      }
+    ],
+    "invalidation_conditions": [
+      "Outside NY session 8AM-12PM ET",
+      "Daily OFL invalidated",
+      "4H FVA disrespected (seeking liquidity state)",
+      "1H OFL swing broken",
+      "5M FVG mitigated before retrace entry",
+      "No 15M OFL active"
+    ],
+    "entry_rules": {
+      "trigger": "5M PFVG retrace inside 15M OFL context",
+      "entry_price": "5M FVG high (SHORT) or 5M FVG low (LONG)",
+      "confirmation": {
+        "single": "5M PFVG only = OFL entry",
+        "double": "15M MSS + 5M PFVG = DOUBLE CONFIRM = highest priority"
+      },
+      "entry_type": "DOUBLE_CONFIRM",
+      "double_confirm_bonus": "If both OFL and MSS present on 15M \u2014 highest probability \u2014 prioritize this over single confirm"
+    },
+    "sl_rules": {
+      "placement": "Above 5M OFL swing high (SHORT) or below 5M OFL swing low (LONG)",
+      "buffer_pips": 1,
+      "hard_rule": "SL covers full 5M OFL swing \u2014 tight but precise"
+    },
+    "tp_rules": {
+      "structural": {
+        "primary": "1H first opposing PDA (context target)",
+        "secondary": "4H ITH or ITL",
+        "tertiary": "Daily BSL or SSL"
+      },
+      "fixed_rr": {
+        "tp1": 2.0,
+        "tp2": 4.0,
+        "tp3": 5.0
+      },
+      "partial_exits": {
+        "at_2r": "Move SL to breakeven",
+        "at_4r": "Close 80 percent of position",
+        "at_5r": "Close remaining 20 percent"
+      }
+    },
+    "risk_management": {
+      "risk_per_trade_pct": 1.0,
+      "max_trades_per_session": 3,
+      "breakeven_trigger": "1:2",
+      "position_sizing": "equity_percentage",
+      "session_loss_limit": "2 percent \u2014 stop trading for session"
+    },
+    "filters": {
+      "min_fvg_type": "PFVG",
+      "min_daily_ofl_probability": 75.0,
+      "min_4h_fva_probability": 70.0,
+      "min_1h_ofl_probability": 60.0,
+      "ny_session_required": true,
+      "session_start": "08:00",
+      "session_end": "12:00",
+      "timezone": "America/New_York",
+      "double_confirm_preferred": true,
+      "rfvg_allowed": false,
+      "weak_fva_allowed": false
+    },
+    "minimum_arguments": 4,
+    "data_requirements": {
+      "DAILY": {
+        "min_candles": 100,
+        "source": "D1 CSV"
+      },
+      "4H": {
+        "min_candles": 300,
+        "source": "resampled from M1"
+      },
+      "1H": {
+        "min_candles": 500,
+        "source": "resampled from M1"
+      },
+      "15M": {
+        "min_candles": 1000,
+        "source": "resampled from M1"
+      },
+      "5M": {
+        "min_candles": 2000,
+        "source": "resampled from M1"
+      }
+    },
+    "expected_accuracy": "HIGH",
+    "notes": "PRIMARY STRATEGY. Full 5-TF stack. NY session only. Double confirmation (OFL + MSS) = boom setup. Daily HIGH probability + 4H IDEAL FVA + 1H OFL + 15M MSS + 5M PFVG = maximum confluence. Most accurate flow trader setup in MMC."
+  },
+  {
+    "strategy_id": "TD-FT-S2",
+    "strategy_name": "London Session 5M Flow Trader",
+    "category": "TOP_DOWN",
+    "subcategory": "FLOW_TRADER",
+    "description": "London session variation of the primary flow trader. High accuracy 5-TF stack during London open volatility.",
+    "timeframe_stack": [
+      "DAILY",
+      "4H",
+      "1H",
+      "15M",
+      "5M"
+    ],
+    "entry_timeframe": "5M",
+    "entry_model": "DOUBLE_CONFIRM",
+    "instruments": [
+      "EURUSD",
+      "GBPUSD",
+      "XAUUSD"
+    ],
+    "session_filter": {
+      "required": true,
+      "session": "LONDON_SESSION",
+      "start": "02:00",
+      "end": "05:00"
+    },
+    "required_conditions": [
+      {
+        "step": 1,
+        "timeframe": "DAILY",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH"
+          ],
+          "is_active": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Daily OFL must be HIGH probability \u2014 sets macro direction"
+      },
+      {
+        "step": 2,
+        "timeframe": "4H",
+        "check_type": "FVA",
+        "direction": "BOTH",
+        "module": "modules.video7_fva_types",
+        "function": "scan_and_classify_all_fvas",
+        "parameters": {
+          "timeframe": "4H"
+        },
+        "expected_result": {
+          "fva_type": [
+            "IDEAL",
+            "GOOD"
+          ],
+          "has_overlapping_fvg": true,
+          "probability_score": {
+            "min": 70.0
+          },
+          "direction_matches_daily": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "4H FVA must be IDEAL or GOOD confirming daily direction"
+      },
+      {
+        "step": 3,
+        "timeframe": "1H",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "1H"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH",
+            "MEDIUM"
+          ],
+          "is_active": true,
+          "direction_matches_daily": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "1H OFL must confirm daily and 4H direction"
+      },
+      {
+        "step": 4,
+        "timeframe": "15M",
+        "check_type": "MSS",
+        "direction": "BOTH",
+        "module": "modules.video8_sweeps",
+        "function": "detect_order_flow_sweep",
+        "parameters": {
+          "timeframe": "15M"
+        },
+        "expected_result": {
+          "is_ofl_sweep": true,
+          "continuation_fvg": {
+            "exists": true
+          },
+          "direction_matches_daily": true
+        },
+        "fail_action": "REDUCE_CONFIRM",
+        "description": "15M MSS preferred \u2014 if absent fall back to OFL only"
+      },
+      {
+        "step": 5,
+        "timeframe": "15M",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "15M"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH",
+            "MEDIUM"
+          ],
+          "is_active": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "15M OFL must be active regardless of MSS presence"
+      },
+      {
+        "step": 6,
+        "timeframe": "5M",
+        "check_type": "FVG",
+        "direction": "BOTH",
+        "module": "modules.video6_fvg_types",
+        "function": "scan_and_classify_all_fvgs",
+        "parameters": {
+          "timeframe": "5M"
+        },
+        "expected_result": {
+          "fvg_type": [
+            "PFVG"
+          ],
+          "is_mitigated": false,
+          "probability_rating": [
+            "HIGH"
+          ]
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "5M PFVG required as final entry zone"
+      }
+    ],
+    "invalidation_conditions": [
+      "Outside NY session 8AM-12PM ET",
+      "Daily OFL invalidated",
+      "4H FVA disrespected (seeking liquidity state)",
+      "1H OFL swing broken",
+      "5M FVG mitigated before retrace entry",
+      "No 15M OFL active"
+    ],
+    "entry_rules": {
+      "trigger": "5M PFVG retrace inside 15M OFL context",
+      "entry_price": "5M FVG high (SHORT) or 5M FVG low (LONG)",
+      "confirmation": {
+        "single": "5M PFVG only = OFL entry",
+        "double": "15M MSS + 5M PFVG = DOUBLE CONFIRM = highest priority"
+      },
+      "entry_type": "DOUBLE_CONFIRM",
+      "double_confirm_bonus": "If both OFL and MSS present on 15M \u2014 highest probability \u2014 prioritize this over single confirm"
+    },
+    "sl_rules": {
+      "placement": "Above 5M OFL swing high (SHORT) or below 5M OFL swing low (LONG)",
+      "buffer_pips": 1,
+      "hard_rule": "SL covers full 5M OFL swing \u2014 tight but precise"
+    },
+    "tp_rules": {
+      "structural": {
+        "primary": "1H first opposing PDA (context target)",
+        "secondary": "4H ITH or ITL",
+        "tertiary": "Daily BSL or SSL"
+      },
+      "fixed_rr": {
+        "tp1": 2.0,
+        "tp2": 4.0,
+        "tp3": 5.0
+      },
+      "partial_exits": {
+        "at_2r": "Move SL to breakeven",
+        "at_4r": "Close 80 percent of position",
+        "at_5r": "Close remaining 20 percent"
+      }
+    },
+    "risk_management": {
+      "risk_per_trade_pct": 1.0,
+      "max_trades_per_session": 3,
+      "breakeven_trigger": "1:2",
+      "position_sizing": "equity_percentage",
+      "session_loss_limit": "2 percent \u2014 stop trading for session"
+    },
+    "filters": {
+      "min_fvg_type": "PFVG",
+      "min_daily_ofl_probability": 75.0,
+      "min_4h_fva_probability": 70.0,
+      "min_1h_ofl_probability": 60.0,
+      "ny_session_required": true,
+      "session_start": "08:00",
+      "session_end": "12:00",
+      "timezone": "America/New_York",
+      "double_confirm_preferred": true,
+      "rfvg_allowed": false,
+      "weak_fva_allowed": false
+    },
+    "minimum_arguments": 4,
+    "data_requirements": {
+      "DAILY": {
+        "min_candles": 100,
+        "source": "D1 CSV"
+      },
+      "4H": {
+        "min_candles": 300,
+        "source": "resampled from M1"
+      },
+      "1H": {
+        "min_candles": 500,
+        "source": "resampled from M1"
+      },
+      "15M": {
+        "min_candles": 1000,
+        "source": "resampled from M1"
+      },
+      "5M": {
+        "min_candles": 2000,
+        "source": "resampled from M1"
+      }
+    },
+    "expected_accuracy": "HIGH",
+    "notes": "PRIMARY STRATEGY. Full 5-TF stack. NY session only. Double confirmation (OFL + MSS) = boom setup. Daily HIGH probability + 4H IDEAL FVA + 1H OFL + 15M MSS + 5M PFVG = maximum confluence. Most accurate flow trader setup in MMC."
+  },
+  {
+    "strategy_id": "TD-FT-S3",
+    "strategy_name": "Hybrid 15M Flow Trader",
+    "category": "TOP_DOWN",
+    "subcategory": "FLOW_TRADER",
+    "description": "Hybrid variation using 15M for entry instead of 5M. Slower but more structural reliability.",
+    "timeframe_stack": [
+      "DAILY",
+      "4H",
+      "1H",
+      "15M"
+    ],
+    "entry_timeframe": "15M",
+    "entry_model": "DOUBLE_CONFIRM",
+    "instruments": [
+      "EURUSD",
+      "GBPUSD",
+      "XAUUSD"
+    ],
+    "session_filter": {
+      "required": true,
+      "session": "NY_SESSION",
+      "start": "08:00",
+      "end": "12:00"
+    },
+    "required_conditions": [
+      {
+        "step": 1,
+        "timeframe": "DAILY",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH"
+          ],
+          "is_active": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Daily OFL must be HIGH probability \u2014 sets macro direction"
+      },
+      {
+        "step": 2,
+        "timeframe": "4H",
+        "check_type": "FVA",
+        "direction": "BOTH",
+        "module": "modules.video7_fva_types",
+        "function": "scan_and_classify_all_fvas",
+        "parameters": {
+          "timeframe": "4H"
+        },
+        "expected_result": {
+          "fva_type": [
+            "IDEAL",
+            "GOOD"
+          ],
+          "has_overlapping_fvg": true,
+          "probability_score": {
+            "min": 70.0
+          },
+          "direction_matches_daily": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "4H FVA must be IDEAL or GOOD confirming daily direction"
+      },
+      {
+        "step": 3,
+        "timeframe": "1H",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "1H"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH",
+            "MEDIUM"
+          ],
+          "is_active": true,
+          "direction_matches_daily": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "1H OFL must confirm daily and 4H direction"
+      },
+      {
+        "step": 4,
+        "timeframe": "15M",
+        "check_type": "MSS",
+        "direction": "BOTH",
+        "module": "modules.video8_sweeps",
+        "function": "detect_order_flow_sweep",
+        "parameters": {
+          "timeframe": "15M"
+        },
+        "expected_result": {
+          "is_ofl_sweep": true,
+          "continuation_fvg": {
+            "exists": true
+          },
+          "direction_matches_daily": true
+        },
+        "fail_action": "REDUCE_CONFIRM",
+        "description": "15M MSS preferred \u2014 if absent fall back to OFL only"
+      },
+      {
+        "step": 5,
+        "timeframe": "15M",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "15M"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH",
+            "MEDIUM"
+          ],
+          "is_active": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "15M OFL must be active regardless of MSS presence"
+      },
+      {
+        "step": 6,
+        "timeframe": "5M",
+        "check_type": "FVG",
+        "direction": "BOTH",
+        "module": "modules.video6_fvg_types",
+        "function": "scan_and_classify_all_fvgs",
+        "parameters": {
+          "timeframe": "5M"
+        },
+        "expected_result": {
+          "fvg_type": [
+            "PFVG"
+          ],
+          "is_mitigated": false,
+          "probability_rating": [
+            "HIGH"
+          ]
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "5M PFVG required as final entry zone"
+      }
+    ],
+    "invalidation_conditions": [
+      "Outside NY session 8AM-12PM ET",
+      "Daily OFL invalidated",
+      "4H FVA disrespected (seeking liquidity state)",
+      "1H OFL swing broken",
+      "5M FVG mitigated before retrace entry",
+      "No 15M OFL active"
+    ],
+    "entry_rules": {
+      "trigger": "5M PFVG retrace inside 15M OFL context",
+      "entry_price": "5M FVG high (SHORT) or 5M FVG low (LONG)",
+      "confirmation": {
+        "single": "5M PFVG only = OFL entry",
+        "double": "15M MSS + 5M PFVG = DOUBLE CONFIRM = highest priority"
+      },
+      "entry_type": "DOUBLE_CONFIRM",
+      "double_confirm_bonus": "If both OFL and MSS present on 15M \u2014 highest probability \u2014 prioritize this over single confirm"
+    },
+    "sl_rules": {
+      "placement": "Above 5M OFL swing high (SHORT) or below 5M OFL swing low (LONG)",
+      "buffer_pips": 1,
+      "hard_rule": "SL covers full 5M OFL swing \u2014 tight but precise"
+    },
+    "tp_rules": {
+      "structural": {
+        "primary": "1H first opposing PDA (context target)",
+        "secondary": "4H ITH or ITL",
+        "tertiary": "Daily BSL or SSL"
+      },
+      "fixed_rr": {
+        "tp1": 2.0,
+        "tp2": 4.0,
+        "tp3": 5.0
+      },
+      "partial_exits": {
+        "at_2r": "Move SL to breakeven",
+        "at_4r": "Close 80 percent of position",
+        "at_5r": "Close remaining 20 percent"
+      }
+    },
+    "risk_management": {
+      "risk_per_trade_pct": 1.0,
+      "max_trades_per_session": 3,
+      "breakeven_trigger": "1:2",
+      "position_sizing": "equity_percentage",
+      "session_loss_limit": "2 percent \u2014 stop trading for session"
+    },
+    "filters": {
+      "min_fvg_type": "PFVG",
+      "min_daily_ofl_probability": 75.0,
+      "min_4h_fva_probability": 70.0,
+      "min_1h_ofl_probability": 60.0,
+      "ny_session_required": true,
+      "session_start": "08:00",
+      "session_end": "12:00",
+      "timezone": "America/New_York",
+      "double_confirm_preferred": true,
+      "rfvg_allowed": false,
+      "weak_fva_allowed": false
+    },
+    "minimum_arguments": 4,
+    "data_requirements": {
+      "DAILY": {
+        "min_candles": 100,
+        "source": "D1 CSV"
+      },
+      "4H": {
+        "min_candles": 300,
+        "source": "resampled from M1"
+      },
+      "1H": {
+        "min_candles": 500,
+        "source": "resampled from M1"
+      },
+      "15M": {
+        "min_candles": 1000,
+        "source": "resampled from M1"
+      },
+      "5M": {
+        "min_candles": 2000,
+        "source": "resampled from M1"
+      }
+    },
+    "expected_accuracy": "HIGH",
+    "notes": "PRIMARY STRATEGY. Full 5-TF stack. NY session only. Double confirmation (OFL + MSS) = boom setup. Daily HIGH probability + 4H IDEAL FVA + 1H OFL + 15M MSS + 5M PFVG = maximum confluence. Most accurate flow trader setup in MMC."
+  },
+  {
+    "strategy_id": "TD-FT-S4",
+    "strategy_name": "London/NY Overlap 5M Flow Trader",
+    "category": "TOP_DOWN",
+    "subcategory": "FLOW_TRADER",
+    "description": "Overlap session variation. Highest volume period for flow trader setups.",
+    "timeframe_stack": [
+      "DAILY",
+      "4H",
+      "1H",
+      "15M",
+      "5M"
+    ],
+    "entry_timeframe": "5M",
+    "entry_model": "DOUBLE_CONFIRM",
+    "instruments": [
+      "EURUSD",
+      "GBPUSD",
+      "XAUUSD"
+    ],
+    "session_filter": {
+      "required": true,
+      "session": "OVERLAP",
+      "start": "07:00",
+      "end": "10:00"
+    },
+    "required_conditions": [
+      {
+        "step": 1,
+        "timeframe": "DAILY",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "DAILY"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH"
+          ],
+          "is_active": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Daily OFL must be HIGH probability \u2014 sets macro direction"
+      },
+      {
+        "step": 2,
+        "timeframe": "4H",
+        "check_type": "FVA",
+        "direction": "BOTH",
+        "module": "modules.video7_fva_types",
+        "function": "scan_and_classify_all_fvas",
+        "parameters": {
+          "timeframe": "4H"
+        },
+        "expected_result": {
+          "fva_type": [
+            "IDEAL",
+            "GOOD"
+          ],
+          "has_overlapping_fvg": true,
+          "probability_score": {
+            "min": 70.0
+          },
+          "direction_matches_daily": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "4H FVA must be IDEAL or GOOD confirming daily direction"
+      },
+      {
+        "step": 3,
+        "timeframe": "1H",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "1H"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH",
+            "MEDIUM"
+          ],
+          "is_active": true,
+          "direction_matches_daily": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "1H OFL must confirm daily and 4H direction"
+      },
+      {
+        "step": 4,
+        "timeframe": "15M",
+        "check_type": "MSS",
+        "direction": "BOTH",
+        "module": "modules.video8_sweeps",
+        "function": "detect_order_flow_sweep",
+        "parameters": {
+          "timeframe": "15M"
+        },
+        "expected_result": {
+          "is_ofl_sweep": true,
+          "continuation_fvg": {
+            "exists": true
+          },
+          "direction_matches_daily": true
+        },
+        "fail_action": "REDUCE_CONFIRM",
+        "description": "15M MSS preferred \u2014 if absent fall back to OFL only"
+      },
+      {
+        "step": 5,
+        "timeframe": "15M",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "15M"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH",
+            "MEDIUM"
+          ],
+          "is_active": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "15M OFL must be active regardless of MSS presence"
+      },
+      {
+        "step": 6,
+        "timeframe": "5M",
+        "check_type": "FVG",
+        "direction": "BOTH",
+        "module": "modules.video6_fvg_types",
+        "function": "scan_and_classify_all_fvgs",
+        "parameters": {
+          "timeframe": "5M"
+        },
+        "expected_result": {
+          "fvg_type": [
+            "PFVG"
+          ],
+          "is_mitigated": false,
+          "probability_rating": [
+            "HIGH"
+          ]
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "5M PFVG required as final entry zone"
+      }
+    ],
+    "invalidation_conditions": [
+      "Outside NY session 8AM-12PM ET",
+      "Daily OFL invalidated",
+      "4H FVA disrespected (seeking liquidity state)",
+      "1H OFL swing broken",
+      "5M FVG mitigated before retrace entry",
+      "No 15M OFL active"
+    ],
+    "entry_rules": {
+      "trigger": "5M PFVG retrace inside 15M OFL context",
+      "entry_price": "5M FVG high (SHORT) or 5M FVG low (LONG)",
+      "confirmation": {
+        "single": "5M PFVG only = OFL entry",
+        "double": "15M MSS + 5M PFVG = DOUBLE CONFIRM = highest priority"
+      },
+      "entry_type": "DOUBLE_CONFIRM",
+      "double_confirm_bonus": "If both OFL and MSS present on 15M \u2014 highest probability \u2014 prioritize this over single confirm"
+    },
+    "sl_rules": {
+      "placement": "Above 5M OFL swing high (SHORT) or below 5M OFL swing low (LONG)",
+      "buffer_pips": 1,
+      "hard_rule": "SL covers full 5M OFL swing \u2014 tight but precise"
+    },
+    "tp_rules": {
+      "structural": {
+        "primary": "1H first opposing PDA (context target)",
+        "secondary": "4H ITH or ITL",
+        "tertiary": "Daily BSL or SSL"
+      },
+      "fixed_rr": {
+        "tp1": 2.0,
+        "tp2": 4.0,
+        "tp3": 5.0
+      },
+      "partial_exits": {
+        "at_2r": "Move SL to breakeven",
+        "at_4r": "Close 80 percent of position",
+        "at_5r": "Close remaining 20 percent"
+      }
+    },
+    "risk_management": {
+      "risk_per_trade_pct": 1.0,
+      "max_trades_per_session": 3,
+      "breakeven_trigger": "1:2",
+      "position_sizing": "equity_percentage",
+      "session_loss_limit": "2 percent \u2014 stop trading for session"
+    },
+    "filters": {
+      "min_fvg_type": "PFVG",
+      "min_daily_ofl_probability": 75.0,
+      "min_4h_fva_probability": 70.0,
+      "min_1h_ofl_probability": 60.0,
+      "ny_session_required": true,
+      "session_start": "08:00",
+      "session_end": "12:00",
+      "timezone": "America/New_York",
+      "double_confirm_preferred": true,
+      "rfvg_allowed": false,
+      "weak_fva_allowed": false
+    },
+    "minimum_arguments": 4,
+    "data_requirements": {
+      "DAILY": {
+        "min_candles": 100,
+        "source": "D1 CSV"
+      },
+      "4H": {
+        "min_candles": 300,
+        "source": "resampled from M1"
+      },
+      "1H": {
+        "min_candles": 500,
+        "source": "resampled from M1"
+      },
+      "15M": {
+        "min_candles": 1000,
+        "source": "resampled from M1"
+      },
+      "5M": {
+        "min_candles": 2000,
+        "source": "resampled from M1"
+      }
+    },
+    "expected_accuracy": "HIGH",
+    "notes": "PRIMARY STRATEGY. Full 5-TF stack. NY session only. Double confirmation (OFL + MSS) = boom setup. Daily HIGH probability + 4H IDEAL FVA + 1H OFL + 15M MSS + 5M PFVG = maximum confluence. Most accurate flow trader setup in MMC."
+  },
+  {
+    "strategy_id": "ICT-S1",
+    "strategy_name": "MSS + FVG ICT 2022 Universal",
+    "category": "ICT_2022",
+    "subcategory": "ICT",
+    "description": "Universal ICT 2022 entry model applicable on any timeframe. BSL or SSL is swept. FVG forms in new direction confirming MSS. Higher TF must align. Entry on retrace into MSS FVG. Works on D1, 4H, 1H \u2014 each version tested separately.",
+    "timeframe_stack": [
+      "HIGHER_TF",
+      "ENTRY_TF"
+    ],
+    "entry_timeframe": "CONFIGURABLE",
+    "entry_model": "MSS_FVG",
+    "instruments": [
+      "EURUSD",
+      "GBPUSD",
+      "XAUUSD"
+    ],
+    "session_filter": {
+      "required": false,
+      "session": "ANY",
+      "start": "00:00",
+      "end": "23:59"
+    },
+    "required_conditions": [
+      {
+        "step": 1,
+        "timeframe": "HIGHER_TF",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "HIGHER_TF"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH",
+            "MEDIUM"
+          ],
+          "is_active": true
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Higher TF OFL must align with MSS direction"
+      },
+      {
+        "step": 2,
+        "timeframe": "ENTRY_TF",
+        "check_type": "SWEEP",
+        "direction": "BOTH",
+        "module": "modules.video8_sweeps",
+        "function": "scan_candles_for_sweeps",
+        "parameters": {
+          "timeframe": "ENTRY_TF"
+        },
+        "expected_result": {
+          "liquidity_event": "SWEEP",
+          "probability_score": {
+            "min": 65.0
+          }
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "BSL or SSL swept on entry TF"
+      },
+      {
+        "step": 3,
+        "timeframe": "ENTRY_TF",
+        "check_type": "MSS",
+        "direction": "BOTH",
+        "module": "modules.video8_sweeps",
+        "function": "detect_order_flow_sweep",
+        "parameters": {
+          "timeframe": "ENTRY_TF"
+        },
+        "expected_result": {
+          "is_ofl_sweep": true,
+          "continuation_fvg": {
+            "exists": true
+          }
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "MSS confirmed by continuation FVG"
+      },
+      {
+        "step": 4,
+        "timeframe": "ENTRY_TF",
+        "check_type": "FVG",
+        "direction": "BOTH",
+        "module": "modules.video6_fvg_types",
+        "function": "full_fvg_analysis",
+        "parameters": {
+          "timeframe": "ENTRY_TF"
+        },
+        "expected_result": {
+          "fvg_type": [
+            "PFVG",
+            "BFVG"
+          ],
+          "is_mitigated": false
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "MSS FVG must be PFVG or BFVG"
+      }
+    ],
+    "invalidation_conditions": [
+      "Price closes back beyond swept level",
+      "Higher TF OFL invalidated",
+      "MSS FVG mitigated before entry"
+    ],
+    "entry_rules": {
+      "trigger": "Retrace into MSS FVG",
+      "entry_price": "FVG high (SHORT) or FVG low (LONG)",
+      "confirmation": "Rejection from MSS FVG in MSS direction",
+      "entry_type": "MSS_FVG"
+    },
+    "sl_rules": {
+      "placement": "Beyond swept BSL high (SHORT) or SSL low (LONG)",
+      "buffer_pips": 2,
+      "hard_rule": "SL beyond swept liquidity"
+    },
+    "tp_rules": {
+      "structural": {
+        "primary": "First opposing PDA",
+        "secondary": "ITH or ITL on entry TF"
+      },
+      "fixed_rr": {
+        "tp1": 2.0,
+        "tp2": 4.0,
+        "tp3": 5.0
+      },
+      "partial_exits": {
+        "at_2r": "Move SL to breakeven",
+        "at_4r": "Close 80 percent",
+        "at_5r": "Close 20 percent remaining"
+      }
+    },
+    "risk_management": {
+      "risk_per_trade_pct": 1.0,
+      "max_trades_per_day": 2,
+      "breakeven_trigger": "1:2",
+      "position_sizing": "equity_percentage"
+    },
+    "filters": {
+      "min_fvg_type": "PFVG",
+      "min_sweep_probability": 65.0,
+      "higher_tf_alignment_required": true,
+      "rfvg_allowed": false
+    },
+    "minimum_arguments": 2,
+    "data_requirements": {
+      "CONFIGURABLE": {
+        "min_candles": 200,
+        "source": "appropriate CSV"
+      }
+    },
+    "expected_accuracy": "HIGH",
+    "notes": "ICT 2022 universal. Configurable for any TF pair. MSS = liquidity swept + FVG in new direction. Core of ICT 2022 model. Tested on D1, 4H, 1H variants separately."
+  },
+  {
+    "strategy_id": "ICT-S2",
+    "strategy_name": "OFL + MSS Confluence Double Confirmation",
+    "category": "ICT_2022",
+    "subcategory": "ICT",
+    "description": "OFL active on higher TF. Inside the OFL a MSS occurs at the FLOD or ODD level. FVG created post MSS = entry FVG. This is the highest accuracy ICT setup \u2014 OFL provides context and MSS provides the precise entry trigger inside that context. Both present = double confirmation.",
+    "timeframe_stack": [
+      "HIGHER_TF",
+      "ENTRY_TF"
+    ],
+    "entry_timeframe": "CONFIGURABLE",
+    "entry_model": "DOUBLE_CONFIRM",
+    "instruments": [
+      "EURUSD",
+      "GBPUSD",
+      "XAUUSD"
+    ],
+    "session_filter": {
+      "required": false,
+      "session": "ANY",
+      "start": "00:00",
+      "end": "23:59"
+    },
+    "required_conditions": [
+      {
+        "step": 1,
+        "timeframe": "HIGHER_TF",
+        "check_type": "OFL",
+        "direction": "BOTH",
+        "module": "modules.video3_4_order_flow",
+        "function": "full_order_flow_scan",
+        "parameters": {
+          "timeframe": "HIGHER_TF"
+        },
+        "expected_result": {
+          "ofl_probability": [
+            "HIGH"
+          ],
+          "is_active": true,
+          "flod_type": "FVG_IS_FLOD"
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Higher TF OFL must be HIGH prob with FVG as FLOD"
+      },
+      {
+        "step": 2,
+        "timeframe": "ENTRY_TF",
+        "check_type": "SWEEP",
+        "direction": "BOTH",
+        "module": "modules.video8_sweeps",
+        "function": "detect_order_flow_sweep",
+        "parameters": {
+          "timeframe": "ENTRY_TF"
+        },
+        "expected_result": {
+          "is_ofl_sweep": true,
+          "sweep_occurs_at": [
+            "FLOD",
+            "ODD"
+          ],
+          "continuation_fvg": {
+            "exists": true
+          }
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "MSS must occur at FLOD or ODD level of higher TF OFL"
+      },
+      {
+        "step": 3,
+        "timeframe": "ENTRY_TF",
+        "check_type": "FVG",
+        "direction": "BOTH",
+        "module": "modules.video6_fvg_types",
+        "function": "full_fvg_analysis",
+        "parameters": {
+          "timeframe": "ENTRY_TF"
+        },
+        "expected_result": {
+          "fvg_type": [
+            "PFVG"
+          ],
+          "is_mitigated": false,
+          "probability_rating": [
+            "HIGH"
+          ]
+        },
+        "fail_action": "SKIP_TRADE",
+        "description": "Post-MSS FVG must be PFVG \u2014 highest quality only"
+      }
+    ],
+    "invalidation_conditions": [
+      "MSS occurs beyond LOD \u2014 OFL fully invalidated",
+      "Higher TF OFL probability drops to LOW",
+      "PFVG mitigated before entry"
+    ],
+    "entry_rules": {
+      "trigger": "Retrace into post-MSS PFVG at FLOD or ODD",
+      "entry_price": "PFVG high (SHORT) or PFVG low (LONG)",
+      "confirmation": "Both OFL context + MSS FVG present",
+      "entry_type": "DOUBLE_CONFIRM"
+    },
+    "sl_rules": {
+      "placement": "Above OFL swing high (SHORT) below OFL swing low (LONG)",
+      "buffer_pips": 2,
+      "hard_rule": "SL at LOD of higher TF OFL"
+    },
+    "tp_rules": {
+      "structural": {
+        "primary": "OFL context target (first opposing PDA)",
+        "secondary": "Higher TF BSL or SSL"
+      },
+      "fixed_rr": {
+        "tp1": 2.0,
+        "tp2": 4.0,
+        "tp3": 5.0
+      },
+      "partial_exits": {
+        "at_2r": "Move SL to breakeven",
+        "at_4r": "Close 80 percent",
+        "at_5r": "Close 20 percent remaining"
+      }
+    },
+    "risk_management": {
+      "risk_per_trade_pct": 1.0,
+      "max_trades_per_day": 2,
+      "breakeven_trigger": "1:2",
+      "position_sizing": "equity_percentage"
+    },
+    "filters": {
+      "min_fvg_type": "PFVG",
+      "min_higher_tf_ofl_probability": 75.0,
+      "mss_at_flod_or_odd_required": true,
+      "rfvg_allowed": false,
+      "double_confirm_required": true
+    },
+    "minimum_arguments": 3,
+    "data_requirements": {
+      "CONFIGURABLE": {
+        "min_candles": 200,
+        "source": "appropriate CSV"
+      }
+    },
+    "expected_accuracy": "HIGH",
+    "notes": "Highest accuracy ICT setup. OFL provides structure context. MSS at FLOD/ODD = price respected the key level and shifted. Post-MSS PFVG = precise entry. When both present = highest priority trade."
+  }
+]

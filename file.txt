@@ -1,0 +1,2829 @@
+Generating all 6 prompts now. Each is a separate, complete, detailed prompt.
+
+---
+
+## PROMPT-F2: Strategy Scanner Base Engine
+
+```
+You are building the MMC Trading Backtest Software.
+PROMPT-F1 is already implemented. ALL_STRATEGIES defined.
+All video modules (video1-11), data_engine implemented.
+Now implement the Strategy Scanner — the engine that reads
+strategy definitions and detects signals in candle data.
+
+This is a FINANCIAL SYSTEM. Zero errors tolerated.
+Every condition check must return precise results.
+
+═══════════════════════════════════════
+PART A — CREATE strategies/strategy_scanner.py
+═══════════════════════════════════════
+
+Imports:
+  import pandas as pd
+  import numpy as np
+  import json
+  import logging
+  from datetime import datetime, time
+  from typing import Dict, List, Optional, Tuple
+  from strategies.strategy_definitions import (
+      ALL_STRATEGIES, STRATEGY_MAP, get_strategy
+  )
+  from modules.data_engine import fetch_candles
+  from modules.video1_pd_arrays import (
+      scan_candles_for_fvgs,
+      scan_candles_for_swings,
+      get_pip_multiplier
+  )
+  from modules.video2_market_structure import (
+      scan_it_points,
+      determine_trend,
+      fair_value_theory_check,
+      full_market_structure_scan
+  )
+  from modules.video3_4_order_flow import (
+      scan_candles_for_ofls,
+      full_order_flow_scan,
+      get_ofl_intention
+  )
+  from modules.video5_candle_science import (
+      analyze_single_candle,
+      get_candle_science_bias,
+      scan_candles_science
+  )
+  from modules.video6_fvg_types import (
+      full_fvg_analysis,
+      scan_and_classify_all_fvgs,
+      get_tradeable_fvgs
+  )
+  from modules.video7_fva_types import (
+      full_fva_analysis,
+      scan_and_classify_all_fvas,
+      get_tradeable_fvas
+  )
+  from modules.video8_sweeps import (
+      scan_candles_for_sweeps,
+      detect_order_flow_sweep,
+      detect_candle_science_sweep,
+      classify_liquidity_event,
+      full_sweep_scan
+  )
+  from modules.video9_time import (
+      is_in_killzone,
+      does_time_support_id,
+      should_trade_today
+  )
+  from modules.video10_11_context_entries import (
+      full_context_scan,
+      get_top_down_analysis,
+      run_mmc_checklist
+  )
+
+logger = logging.getLogger('mmc.scanner')
+
+═══════════════════════════════════════
+CONSTANTS
+═══════════════════════════════════════
+
+SUPPORTED_INSTRUMENTS = ['EURUSD', 'GBPUSD', 'XAUUSD']
+
+TIMEFRAME_HIERARCHY = [
+    'MONTHLY', 'WEEKLY', 'DAILY', '4H', '1H', '15M', '5M', '1M'
+]
+
+TIMEFRAME_WEIGHTS = {
+    'MONTHLY': 7, 'WEEKLY': 6, 'DAILY': 5,
+    '4H': 4, '1H': 3, '15M': 2, '5M': 1, '1M': 1
+}
+
+CHECK_TYPE_MODULE_MAP = {
+    'CANDLE_SCIENCE': 'video5_candle_science',
+    'OFL':           'video3_4_order_flow',
+    'FVG':           'video6_fvg_types',
+    'FVA':           'video7_fva_types',
+    'SWEEP':         'video8_sweeps',
+    'MSS':           'video8_sweeps',
+    'IT_POINT':      'video2_market_structure',
+    'MARKET_STATE':  'video2_market_structure',
+    'KILLZONE':      'video9_time',
+    'NEWS':          'video9_time',
+    'SWING_POINT':   'video1_pd_arrays'
+}
+
+SIGNAL_RESULT_SCHEMA = {
+    'strategy_id':        str,
+    'instrument':         str,
+    'signal_datetime':    str,
+    'direction':          str,
+    'entry_price':        float,
+    'stop_loss':          float,
+    'take_profit_1r':     float,
+    'take_profit_2r':     float,
+    'take_profit_4r':     float,
+    'take_profit_5r':     float,
+    'risk_pips':          float,
+    'conditions_passed':  list,
+    'conditions_failed':  list,
+    'conditions_warned':  list,
+    'overall_passed':     bool,
+    'confidence_score':   float,
+    'entry_model':        str,
+    'fvg_type':           str,
+    'ofl_probability':    str,
+    'double_confirm':     bool,
+    'in_killzone':        bool,
+    'timeframe_stack':    list,
+    'raw_data':           dict
+}
+
+═══════════════════════════════════════
+PART B — CORE SCANNER FUNCTIONS
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function 1: load_data_for_strategy(strategy_id, instrument)
+─────────────────────────────────────
+# PURPOSE: Load all required timeframe data for a strategy
+# Returns: dict {timeframe: DataFrame}
+# Steps:
+#   1. strategy = get_strategy(strategy_id)
+#   2. data_requirements = strategy['data_requirements']
+#   3. For each TF in data_requirements:
+#        df = fetch_candles(instrument, tf)
+#        Validate min_candles requirement:
+#          if len(df) < data_requirements[tf]['min_candles']:
+#            raise ValueError(
+#              f"Insufficient data for {tf}: "
+#              f"got {len(df)}, need {data_requirements[tf]['min_candles']}"
+#            )
+#        data[tf] = df
+#   4. Return data dict
+#   5. On error: log and raise with clear message
+
+─────────────────────────────────────
+Function 2: check_session_filter(strategy, current_datetime_str, instrument)
+─────────────────────────────────────
+# PURPOSE: Check if current time satisfies session filter
+# Returns: dict {passed, in_session, session_name, reason}
+# Steps:
+#   1. session_filter = strategy['session_filter']
+#   2. If session_filter['required'] == False:
+#        return {passed: True, in_session: True,
+#                session_name: 'ANY', reason: 'No session filter'}
+#   3. Parse current_datetime_str → datetime object NY timezone
+#   4. session_start = time.fromisoformat(session_filter['start'])
+#   5. session_end   = time.fromisoformat(session_filter['end'])
+#   6. current_time  = parsed datetime .time()
+#   7. in_session = session_start <= current_time <= session_end
+#   8. If not in_session:
+#        passed = False
+#        reason = f"Outside session {session_filter['start']}-{session_filter['end']} NY"
+#   9. Return dict
+
+─────────────────────────────────────
+Function 3: evaluate_single_condition(condition, data_dict, instrument, current_datetime_str)
+─────────────────────────────────────
+# PURPOSE: Evaluate one condition from strategy required_conditions
+# Returns: dict {
+#   step, check_type, passed, failed, warned,
+#   result_data, reason, fail_action
+# }
+# Steps:
+#   1. tf = condition['timeframe']
+#      If tf == 'ALL': use data_dict directly
+#      Else: df = data_dict.get(tf)
+#            If df is None: return {passed: False, reason: f"No data for {tf}"}
+#
+#   2. check_type = condition['check_type']
+#   3. Call appropriate scanner function based on check_type:
+#
+#      CANDLE_SCIENCE:
+#        result = get_candle_science_bias(instrument)
+#        OR analyze_single_candle for single candle check
+#
+#      OFL:
+#        result = full_order_flow_scan(instrument, tf)
+#        Check: ofl_probability in expected values
+#        Check: is_active == True
+#        Check: direction alignment if required
+#
+#      FVG:
+#        result = scan_and_classify_all_fvgs(instrument, tf)
+#        Filter unmitigated FVGs matching expected fvg_type
+#        Check: any PFVG exists if required
+#
+#      FVA:
+#        result = scan_and_classify_all_fvas(instrument, tf)
+#        Filter FVAs matching expected fva_type
+#        Check: has_overlapping_fvg if required
+#
+#      SWEEP:
+#        result = full_sweep_scan(instrument, tf)
+#        Check: any sweep with SWEEP event type
+#        Check: probability_score >= minimum
+#
+#      MSS:
+#        result = detect_order_flow_sweep for each recent swing
+#        Check: is_ofl_sweep == True
+#        Check: continuation_fvg exists
+#
+#      IT_POINT:
+#        result = scan_it_points(df)
+#        Check: any IT_HIGH or IT_LOW is_broken == True
+#
+#      MARKET_STATE:
+#        result = fair_value_theory_check(...)
+#        Check: state == expected state
+#
+#      KILLZONE:
+#        result = is_in_killzone(current_datetime_str, instrument)
+#        Check: in_killzone == True
+#        Note: If fail_action == WARN then never hard FAIL
+#
+#      SWING_POINT:
+#        result = scan_candles_for_swings(df)
+#        Check: no opposing unmitigated PDA blocking
+#
+#   4. Compare result to condition['expected_result']
+#      For each expected key:
+#        If expected value is list: check result value in list
+#        If expected value is dict with 'min': check result >= min
+#        If expected value is dict with 'max': check result <= max
+#        If expected value is bool: check exact match
+#        If expected value is 'exists': check not None and not empty
+#
+#   5. Determine pass/fail/warn:
+#      fail_action = condition['fail_action']
+#      If all checks pass: passed = True
+#      If any check fails:
+#        If fail_action == 'SKIP_TRADE': passed = False, failed = True
+#        If fail_action == 'WARN': passed = True, warned = True
+#        If fail_action == 'REDUCE_CONFIRM': passed = True, warned = True
+#
+#   6. Return full result dict
+
+─────────────────────────────────────
+Function 4: evaluate_all_conditions(strategy, data_dict, instrument, current_datetime_str)
+─────────────────────────────────────
+# PURPOSE: Run all required_conditions for a strategy
+# Returns: dict {
+#   all_passed, conditions_passed, conditions_failed,
+#   conditions_warned, fail_reasons, warn_reasons,
+#   confidence_score
+# }
+# Steps:
+#   1. conditions_passed = []
+#   2. conditions_failed = []
+#   3. conditions_warned = []
+#   4. For each condition in strategy['required_conditions']:
+#        result = evaluate_single_condition(condition, data_dict,
+#                                           instrument, current_datetime_str)
+#        If result.passed and not result.warned:
+#          conditions_passed.append(result)
+#        If result.passed and result.warned:
+#          conditions_warned.append(result)
+#        If not result.passed:
+#          conditions_failed.append(result)
+#          If condition['fail_action'] == 'SKIP_TRADE':
+#            Break — stop evaluating further conditions
+#            Return immediately with all_passed = False
+#
+#   5. all_passed = len(conditions_failed) == 0
+#   6. confidence_score calculation:
+#      base = (len(conditions_passed) / len(strategy['required_conditions'])) * 100
+#      penalty = len(conditions_warned) * 5
+#      confidence_score = max(0.0, min(100.0, base - penalty))
+#   7. Return dict
+
+─────────────────────────────────────
+Function 5: calculate_entry_details(strategy, data_dict, instrument, direction)
+─────────────────────────────────────
+# PURPOSE: Calculate precise entry, SL, TP levels from strategy rules
+# Returns: dict {
+#   entry_price, stop_loss,
+#   take_profit_1r, take_profit_2r,
+#   take_profit_4r, take_profit_5r,
+#   risk_pips, reward_pips_2r,
+#   fvg_high, fvg_low,
+#   sl_placement_description
+# }
+# Steps:
+#   1. pip_mult = get_pip_multiplier(instrument)
+#   2. entry_tf = strategy['entry_timeframe']
+#      If entry_tf == 'CONFIGURABLE': use first available TF in data_dict
+#   3. Get entry FVG from scan_and_classify_all_fvgs for entry_tf
+#      Filter: unmitigated PFVG matching direction
+#      Sort by probability_score descending
+#      Take first (highest probability) FVG
+#   4. If no valid FVG found: return None (no entry possible)
+#   5. entry_rules = strategy['entry_rules']
+#      If direction == LONG (BULLISH):
+#        entry_price = fvg_low  (enter at bottom of bullish FVG)
+#      If direction == SHORT (BEARISH):
+#        entry_price = fvg_high (enter at top of bearish FVG)
+#   6. sl_rules = strategy['sl_rules']
+#      Get OFL for entry_tf
+#      If direction == LONG:
+#        stop_loss = ofl_swing_low - (sl_rules['buffer_pips'] / pip_mult)
+#      If direction == SHORT:
+#        stop_loss = ofl_swing_high + (sl_rules['buffer_pips'] / pip_mult)
+#   7. risk = abs(entry_price - stop_loss)
+#      If risk <= 0: raise ValueError("Invalid SL — zero risk")
+#      risk_pips = risk * pip_mult
+#   8. tp_rules = strategy['tp_rules']['fixed_rr']
+#      take_profit_1r = entry ± risk * 1.0
+#      take_profit_2r = entry ± risk * 2.0
+#      take_profit_4r = entry ± risk * 4.0
+#      take_profit_5r = entry ± risk * 5.0
+#      (+ for LONG, - for SHORT)
+#   9. Return complete dict
+
+─────────────────────────────────────
+Function 6: detect_double_confirmation(strategy, data_dict, instrument)
+─────────────────────────────────────
+# PURPOSE: Check if both OFL and MSS are present (double confirm)
+# Returns: dict {double_confirm, ofl_present, mss_present, bonus_score}
+# Steps:
+#   1. entry_tf = strategy['entry_timeframe']
+#   2. Check OFL:
+#      ofl_result = full_order_flow_scan(instrument, entry_tf)
+#      ofl_present = ofl_result['most_recent_ofl'] is not None
+#                    AND ofl_result['most_recent_ofl']['ofl_probability'] in ['HIGH','MEDIUM']
+#   3. Check MSS:
+#      sweep_result = full_sweep_scan(instrument, entry_tf)
+#      mss_present = any sweep with:
+#        liquidity_event == 'SWEEP'
+#        continuation_fvg exists
+#   4. double_confirm = ofl_present AND mss_present
+#   5. bonus_score:
+#      If double_confirm: 20.0 (significant confidence boost)
+#      If ofl_present only: 0.0
+#      If mss_present only: 5.0
+#   6. Return dict
+#   Note: Video says "if both present = BOOM" — this is the highest
+#         priority signal in the entire MMC system
+
+─────────────────────────────────────
+Function 7: scan_for_signals(strategy_id, instrument, scan_datetime_str)
+─────────────────────────────────────
+# PURPOSE: Master scan function for one strategy on one instrument
+# Returns: dict (SIGNAL_RESULT_SCHEMA) or None if no signal
+# Steps:
+#   1. strategy = get_strategy(strategy_id)
+#   2. Validate instrument in SUPPORTED_INSTRUMENTS
+#   3. data_dict = load_data_for_strategy(strategy_id, instrument)
+#   4. session_check = check_session_filter(strategy, scan_datetime_str, instrument)
+#      If not session_check.passed:
+#        return None (outside required session)
+#   5. conditions_result = evaluate_all_conditions(
+#        strategy, data_dict, instrument, scan_datetime_str)
+#   6. If not conditions_result.all_passed:
+#        return None (conditions not met)
+#   7. Determine direction from conditions:
+#      direction = get_dominant_direction(conditions_result, data_dict, instrument)
+#   8. entry_details = calculate_entry_details(
+#        strategy, data_dict, instrument, direction)
+#      If entry_details is None: return None
+#   9. double_confirm = detect_double_confirmation(strategy, data_dict, instrument)
+#   10. final_confidence = conditions_result.confidence_score
+#         + double_confirm.bonus_score
+#   11. Build and return SIGNAL_RESULT_SCHEMA dict:
+#       {
+#         strategy_id, instrument,
+#         signal_datetime: scan_datetime_str,
+#         direction,
+#         entry_price: entry_details.entry_price,
+#         stop_loss: entry_details.stop_loss,
+#         take_profit_1r: entry_details.take_profit_1r,
+#         take_profit_2r: entry_details.take_profit_2r,
+#         take_profit_4r: entry_details.take_profit_4r,
+#         take_profit_5r: entry_details.take_profit_5r,
+#         risk_pips: entry_details.risk_pips,
+#         conditions_passed: conditions_result.conditions_passed,
+#         conditions_failed: [],
+#         conditions_warned: conditions_result.conditions_warned,
+#         overall_passed: True,
+#         confidence_score: round(final_confidence, 2),
+#         entry_model: strategy['entry_model'],
+#         fvg_type: entry_details.get('fvg_type'),
+#         ofl_probability: double_confirm related,
+#         double_confirm: double_confirm.double_confirm,
+#         in_killzone: session_check.in_session,
+#         timeframe_stack: strategy['timeframe_stack'],
+#         raw_data: entry_details
+#       }
+
+─────────────────────────────────────
+Function 8: get_dominant_direction(conditions_result, data_dict, instrument)
+─────────────────────────────────────
+# PURPOSE: Determine BULLISH or BEARISH from passed conditions
+# Returns: str 'BULLISH' or 'BEARISH'
+# Steps:
+#   1. Count bullish signals from conditions_passed:
+#      candle_type in DISRESPECT_BULLISH, RESPECT_BULLISH → +1 bullish
+#      ofl direction BULLISH → +1 bullish
+#      sweep direction BULLISH → +1 bullish
+#   2. Count bearish signals similarly
+#   3. If bullish_count > bearish_count: return 'BULLISH'
+#   4. If bearish_count > bullish_count: return 'BEARISH'
+#   5. If equal: check most recent OFL direction
+#      Return that direction as tiebreaker
+#   6. If still ambiguous: return 'NEUTRAL'
+#      Log warning: "Ambiguous direction detected for signal"
+
+─────────────────────────────────────
+Function 9: scan_all_strategies(instrument, scan_datetime_str)
+─────────────────────────────────────
+# PURPOSE: Run all 25 strategies against one instrument
+# Returns: dict {
+#   instrument, scan_datetime,
+#   total_signals, signals_by_category,
+#   all_signals: list of signal dicts,
+#   best_signal: highest confidence signal,
+#   double_confirm_signals: list of double confirm signals
+# }
+# Steps:
+#   1. all_signals = []
+#   2. For each strategy in ALL_STRATEGIES:
+#        try:
+#          signal = scan_for_signals(strategy.strategy_id,
+#                                    instrument, scan_datetime_str)
+#          if signal is not None:
+#            all_signals.append(signal)
+#        except Exception as e:
+#          logger.error(f"Scanner error {strategy.strategy_id}: {e}")
+#          continue  # never crash the full scan
+#   3. Sort by confidence_score descending
+#   4. double_confirm_signals = [s for s in all_signals if s.double_confirm]
+#   5. signals_by_category = group by strategy category
+#   6. best_signal = all_signals[0] if any else None
+#   7. Return complete dict
+
+─────────────────────────────────────
+Function 10: scan_all_instruments(scan_datetime_str)
+─────────────────────────────────────
+# PURPOSE: Scan all instruments with all strategies
+# Returns: dict {instrument: scan_result for each}
+# Steps:
+#   results = {}
+#   For each instrument in SUPPORTED_INSTRUMENTS:
+#     try:
+#       results[instrument] = scan_all_strategies(
+#           instrument, scan_datetime_str)
+#     except Exception as e:
+#       logger.error(f"Scan error {instrument}: {e}")
+#       results[instrument] = {'error': str(e)}
+#   Return results
+
+─────────────────────────────────────
+Function 11: get_highest_probability_signal(scan_results)
+─────────────────────────────────────
+# PURPOSE: From all scan results find absolute best signal
+# Returns: dict {best_signal, instrument, strategy_id, confidence}
+# Steps:
+#   1. Collect all signals across all instruments
+#   2. Prioritize: double_confirm=True > single confirm
+#   3. Within same confirm type: sort by confidence_score
+#   4. Return highest confidence signal with metadata
+
+─────────────────────────────────────
+Function 12: save_signals_to_json(signals_list, filepath)
+─────────────────────────────────────
+# PURPOSE: Save detected signals to JSON file
+# Steps:
+#   1. Ensure filepath parent directories exist
+#   2. Load existing signals if file exists
+#   3. Append new signals
+#   4. Save with json.dump(indent=2)
+#   5. Return count of signals saved
+
+═══════════════════════════════════════
+PART C — CREATE routes/scanner_routes.py
+═══════════════════════════════════════
+
+Create Flask Blueprint: scanner_bp
+
+GET /api/scanner/scan
+  Query params:
+    instrument (required): EURUSD / GBPUSD / XAUUSD
+    strategy_id (optional): if provided scan single strategy
+    datetime (optional): ISO datetime string, default = now
+  Steps:
+    If strategy_id provided:
+      result = scan_for_signals(strategy_id, instrument, datetime)
+    Else:
+      result = scan_all_strategies(instrument, datetime)
+  Returns: {status, signals_found, result}
+  On error: 400/500
+
+GET /api/scanner/scan-all
+  Query params: datetime (optional)
+  Calls: scan_all_instruments(datetime)
+  Returns: {status, total_signals, results_by_instrument}
+
+GET /api/scanner/best-signal
+  Query params: datetime (optional)
+  Calls: scan_all_instruments then get_highest_probability_signal
+  Returns: {status, best_signal}
+
+POST /api/scanner/save-signals
+  Body: {signals: list, filepath: str}
+  Calls: save_signals_to_json
+  Returns: {status, saved_count}
+
+GET /api/scanner/strategies
+  Returns: list of all strategy IDs and names
+
+GET /api/scanner/strategy/<strategy_id>
+  Returns: full strategy definition dict
+
+═══════════════════════════════════════
+PART D — UPDATE app.py
+═══════════════════════════════════════
+
+  - Import scanner_bp from routes/scanner_routes.py
+  - Register: app.register_blueprint(scanner_bp)
+  - Keep ALL existing code intact
+
+═══════════════════════════════════════
+PART E — ERROR HANDLING
+═══════════════════════════════════════
+
+1. Every scan must be wrapped in try/except
+2. Single strategy failure never stops full scan
+3. Log all errors with strategy_id and instrument
+4. Return partial results if some strategies fail
+5. Never return empty — always return scan metadata
+6. Insufficient data = skip strategy, log warning
+7. All signals saved with timestamp for audit trail
+
+Add this to codebase without any errors.
+Keep ALL existing code intact.
+```
+
+---
+
+## PROMPT-D1: Daily Strategies Scanner
+
+```
+You are building the MMC Trading Backtest Software.
+PROMPT-F1 and PROMPT-F2 are implemented.
+Now implement the Daily Strategy Scanner module —
+dedicated scanner for D1-S1 through D1-S5.
+
+═══════════════════════════════════════
+PART A — CREATE strategies/individual/daily_strategies.py
+═══════════════════════════════════════
+
+Imports:
+  import pandas as pd
+  import numpy as np
+  import json
+  import logging
+  from datetime import datetime
+  from typing import Dict, List, Optional
+  from modules.data_engine import fetch_candles
+  from modules.video1_pd_arrays import (
+      scan_candles_for_fvgs,
+      scan_candles_for_swings,
+      get_pip_multiplier,
+      validate_bullish_fvg,
+      validate_bearish_fvg,
+      check_mitigation
+  )
+  from modules.video2_market_structure import (
+      scan_it_points,
+      fair_value_theory_check,
+      full_market_structure_scan
+  )
+  from modules.video3_4_order_flow import (
+      full_order_flow_scan,
+      scan_candles_for_ofls,
+      get_ofl_intention
+  )
+  from modules.video5_candle_science import (
+      analyze_single_candle,
+      get_candle_science_bias,
+      classify_candle_type,
+      calculate_candle_metrics
+  )
+  from modules.video6_fvg_types import (
+      scan_and_classify_all_fvgs,
+      full_fvg_analysis,
+      get_tradeable_fvgs
+  )
+  from modules.video7_fva_types import (
+      scan_and_classify_all_fvas,
+      get_tradeable_fvas
+  )
+  from modules.video8_sweeps import (
+      scan_candles_for_sweeps,
+      detect_order_flow_sweep,
+      classify_liquidity_event,
+      full_sweep_scan
+  )
+  from strategies.strategy_definitions import get_strategy
+
+logger = logging.getLogger('mmc.daily_scanner')
+
+DAILY_STRATEGY_IDS = ['D1-S1', 'D1-S2', 'D1-S3', 'D1-S4', 'D1-S5']
+
+═══════════════════════════════════════
+SHARED DAILY UTILITIES
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: load_daily_data(instrument)
+─────────────────────────────────────
+# Returns: dict with daily candles DataFrame
+# Steps:
+#   df = fetch_candles(instrument, 'DAILY')
+#   If len(df) < 100:
+#     raise ValueError(f"Need 100+ daily candles, got {len(df)}")
+#   Return {'DAILY': df}
+
+─────────────────────────────────────
+Function: get_latest_closed_candle(df)
+─────────────────────────────────────
+# Returns: Series — most recent CLOSED candle (not forming)
+# MMC Rule: Never analyze forming candle
+# Steps:
+#   Return df.iloc[-2]  # second to last = most recently CLOSED
+
+─────────────────────────────────────
+Function: get_no_opposing_pda_blocking(df, entry_price, direction, instrument)
+─────────────────────────────────────
+# Returns: bool — True if path is clear to target
+# Steps:
+#   fvg_list = scan_and_classify_all_fvgs(instrument, 'DAILY')
+#   swing_list = scan_candles_for_swings(df)
+#   If direction == BULLISH:
+#     opposing = [f for f in fvg_list
+#                 if f['direction'] == 'BEARISH'
+#                 and f['fvg_low'] > entry_price
+#                 and not f['is_mitigated']]
+#     opposing_swings = [s for s in swing_list
+#                        if s['swing_type'] == 'SWING_HIGH'
+#                        and s['swing_level'] > entry_price
+#                        and not s['is_mitigated']]
+#   If direction == BEARISH:
+#     opposing = [f for f in fvg_list
+#                 if f['direction'] == 'BULLISH'
+#                 and f['fvg_high'] < entry_price
+#                 and not f['is_mitigated']]
+#     opposing_swings = [s for s in swing_list
+#                        if s['swing_type'] == 'SWING_LOW'
+#                        and s['swing_level'] < entry_price
+#                        and not s['is_mitigated']]
+#   Return len(opposing) == 0 and len(opposing_swings) == 0
+
+─────────────────────────────────────
+Function: calculate_daily_targets(df, direction, instrument)
+─────────────────────────────────────
+# Returns: dict {
+#   bsl_target, ssl_target,
+#   ith_target, itl_target,
+#   nearest_structural_target
+# }
+# Steps:
+#   current_price = df.iloc[-1]['close']
+#   swing_list = scan_candles_for_swings(df)
+#   it_points = scan_it_points(df)
+#   If direction == BULLISH:
+#     bsl_candidates = [s for s in swing_list
+#                       if s['swing_type'] == 'SWING_HIGH'
+#                       and s['swing_level'] > current_price
+#                       and not s['is_mitigated']]
+#     Sort ascending → nearest BSL first
+#     ith_candidates = [p for p in it_points
+#                       if p['point_type'] == 'IT_HIGH'
+#                       and p['price_level'] > current_price]
+#     Sort ascending → nearest ITH first
+#   If direction == BEARISH:
+#     ssl_candidates = SWING_LOWs below current_price
+#     itl_candidates = IT_LOWs below current_price
+#   nearest_structural = closest target in direction
+#   Return all targets dict
+
+═══════════════════════════════════════
+D1-S1 SCANNER: Daily OFL Continuation
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_d1_s1(instrument)
+─────────────────────────────────────
+# PURPOSE: Detect D1-S1 setup — Daily OFL Continuation
+# Returns: signal dict or None
+# FULL LOGIC:
+
+# Step 1: Load data
+#   data = load_daily_data(instrument)
+#   df = data['DAILY']
+
+# Step 2: Get latest closed daily candle
+#   candle = get_latest_closed_candle(df)
+#   metrics = calculate_candle_metrics(
+#     candle.open, candle.high, candle.low, candle.close)
+#   candle_analysis = classify_candle_type(metrics)
+
+# Step 3: Check disrespect candle
+#   CONDITION: candle_analysis.candle_type in [
+#     'DISRESPECT_BULLISH', 'DISRESPECT_BEARISH']
+#   AND candle_analysis.confidence_score >= 60.0
+#   If fails: return None
+
+# Step 4: Determine direction from candle science
+#   If candle_type == 'DISRESPECT_BULLISH': direction = 'BULLISH'
+#   If candle_type == 'DISRESPECT_BEARISH': direction = 'BEARISH'
+
+# Step 5: Scan daily FVGs
+#   fvg_list = scan_and_classify_all_fvgs(instrument, 'DAILY')
+#   pfvgs = [f for f in fvg_list
+#            if f['fvg_type'] == 'PFVG'
+#            and not f['is_mitigated']
+#            and f['direction'] == (
+#              'BULLISH' if direction == 'BULLISH' else 'BEARISH')]
+#   CONDITION: len(pfvgs) > 0
+#   If fails: return None
+#   best_fvg = pfvgs[0]  # most recent unmitigated PFVG
+
+# Step 6: Check OFL
+#   ofl_result = full_order_flow_scan(instrument, 'DAILY')
+#   CONDITION: ofl_result['most_recent_ofl'] is not None
+#   AND ofl_result['most_recent_ofl']['ofl_probability'] == 'HIGH'
+#   AND ofl_result['most_recent_ofl']['is_active'] == True
+#   AND ofl_result['most_recent_ofl']['direction'] == direction
+#   If fails: return None
+
+# Step 7: Check no blocking PDA
+#   entry_price = best_fvg['fvg_low'] if BULLISH else best_fvg['fvg_high']
+#   clear_path = get_no_opposing_pda_blocking(df, entry_price, direction, instrument)
+#   CONDITION: clear_path == True
+#   If fails: return None (blocking PDA present)
+
+# Step 8: Calculate SL
+#   pip_mult = get_pip_multiplier(instrument)
+#   ofl = ofl_result['most_recent_ofl']
+#   buffer = 2.0 / pip_mult
+#   If direction == BULLISH:
+#     stop_loss = ofl['swing_point_price'] - buffer
+#   If direction == BEARISH:
+#     stop_loss = ofl['swing_point_price'] + buffer
+#   risk = abs(entry_price - stop_loss)
+#   If risk <= 0: return None
+
+# Step 9: Calculate TPs
+#   risk_pips = risk * pip_mult
+#   tp1r  = entry_price + risk  if BULLISH else entry_price - risk
+#   tp2r  = entry_price + risk*2 ...
+#   tp4r  = entry_price + risk*4 ...
+#   tp5r  = entry_price + risk*5 ...
+
+# Step 10: Get structural targets
+#   targets = calculate_daily_targets(df, direction, instrument)
+
+# Step 11: Build signal
+#   Return {
+#     strategy_id: 'D1-S1',
+#     instrument: instrument,
+#     signal_datetime: str(df.iloc[-1].name),
+#     direction: direction,
+#     entry_price: entry_price,
+#     stop_loss: stop_loss,
+#     take_profit_1r: tp1r,
+#     take_profit_2r: tp2r,
+#     take_profit_4r: tp4r,
+#     take_profit_5r: tp5r,
+#     risk_pips: round(risk_pips, 2),
+#     confidence_score: candle_analysis.confidence_score,
+#     entry_model: 'OFL',
+#     fvg_type: 'PFVG',
+#     fvg_high: best_fvg['fvg_high'],
+#     fvg_low: best_fvg['fvg_low'],
+#     ofl_probability: 'HIGH',
+#     double_confirm: False,
+#     in_killzone: False,
+#     structural_targets: targets,
+#     timeframe_stack: ['DAILY'],
+#     candle_type: candle_analysis.candle_type,
+#     candle_confidence: candle_analysis.confidence_score
+#   }
+
+═══════════════════════════════════════
+D1-S2 SCANNER: Daily Respect Candle Reversal
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_d1_s2(instrument)
+─────────────────────────────────────
+# Step 1: Load data + latest closed candle (same as D1-S1)
+
+# Step 2: Check respect candle
+#   CONDITION: candle_type in ['RESPECT_BULLISH', 'RESPECT_BEARISH']
+#   AND confidence_score >= 65.0
+#   If RESPECT_BULLISH: direction = 'BULLISH'
+#   If RESPECT_BEARISH: direction = 'BEARISH'
+#   If fails: return None
+
+# Step 3: Verify sweep occurred
+#   sweep_result = full_sweep_scan(instrument, 'DAILY')
+#   recent_sweeps = sweep_result['all_sweeps']
+#   CONDITION: any sweep in last 3 candles
+#   AND sweep.liquidity_event == 'SWEEP'
+#   AND sweep.probability_score >= 65.0
+#   If fails: return None
+#   best_sweep = most recent qualifying sweep
+
+# Step 4: Find reversal FVG after sweep
+#   fvg_list = scan_and_classify_all_fvgs(instrument, 'DAILY')
+#   reversal_direction_fvg = BULLISH if direction BULLISH else BEARISH
+#   reversal_fvgs = [f for f in fvg_list
+#                    if f['direction'] == reversal_direction_fvg
+#                    and f['fvg_type'] in ['PFVG', 'BFVG']
+#                    and not f['is_mitigated']
+#                    and f['candle3_datetime'] >= best_sweep['trade_date']]
+#   CONDITION: len(reversal_fvgs) > 0
+#   If fails: return None
+#   entry_fvg = reversal_fvgs[0]
+
+# Step 5: Calculate entry and SL
+#   entry_price = entry_fvg['fvg_low'] if BULLISH else entry_fvg['fvg_high']
+#   SL beyond sweep wick:
+#   If BULLISH: stop_loss = best_sweep['sweep_candle_low'] - (3/pip_mult)
+#   If BEARISH: stop_loss = best_sweep['sweep_candle_high'] + (3/pip_mult)
+#   risk = abs(entry_price - stop_loss)
+
+# Step 6: Build complete signal dict (same fields as D1-S1)
+#   entry_model: 'MSS_FVG'
+#   double_confirm: False (single confirmation)
+#   sweep_level: best_sweep['swept_level']
+#   sweep_probability: best_sweep['probability_score']
+
+═══════════════════════════════════════
+D1-S3 SCANNER: Daily FVA Continuation
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_d1_s3(instrument)
+─────────────────────────────────────
+# Step 1: Load data
+
+# Step 2: Scan IT points for broken IT High/Low
+#   ms_result = full_market_structure_scan(instrument, 'DAILY')
+#   it_points = ms_result['it_points']
+#   broken_its = [p for p in it_points if p['is_broken']]
+#   CONDITION: len(broken_its) > 0
+#   If fails: return None
+#   most_recent_broken = broken_its[-1]
+#   direction from broken IT type:
+#     IT_HIGH broken (price went above) → BULLISH
+#     IT_LOW broken (price went below) → BEARISH
+
+# Step 3: Scan daily FVAs
+#   fva_list = scan_and_classify_all_fvas(instrument, 'DAILY')
+#   qualifying_fvas = [f for f in fva_list
+#                      if f['fva_type'] in ['IDEAL', 'GOOD']
+#                      and f['has_overlapping_fvg']
+#                      and not f['is_sweep']
+#                      and f['probability_score'] >= 70.0
+#                      and f['direction'] == direction]
+#   CONDITION: len(qualifying_fvas) > 0
+#   If fails: return None
+#   best_fva = qualifying_fvas[0]
+
+# Step 4: Check market state
+#   current_price = df.iloc[-1]['close']
+#   fv_check = fair_value_theory_check(
+#     current_price, best_fva['fva_high'],
+#     best_fva['fva_low'], direction)
+#   CONDITION: fv_check['state'] == 'OFFERING_FAIR_VALUE'
+#   If fails (SEEKING_LIQUIDITY): return None
+
+# Step 5: Find overlapping FVG as entry
+#   entry_fvg = find_overlapping_fvg in fva zone
+#   CONDITION: entry_fvg is not None
+#   CONDITION: entry_fvg.fvg_type == 'PFVG'
+#   If fails: return None
+
+# Step 6: Calculate entry
+#   entry_price = overlapping FVG entry level
+#   SL beyond FVA boundary (not just FVG)
+#   If BULLISH: stop_loss = best_fva['fva_low'] - (3/pip_mult)
+#   If BEARISH: stop_loss = best_fva['fva_high'] + (3/pip_mult)
+
+# Step 7: Build signal
+#   fva_type: best_fva['fva_type']
+#   fva_high: best_fva['fva_high']
+#   fva_low: best_fva['fva_low']
+#   market_state: 'OFFERING_FAIR_VALUE'
+#   entry_model: 'OFL'
+
+═══════════════════════════════════════
+D1-S4 SCANNER: Daily Liquidity Sweep + FVG
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_d1_s4(instrument)
+─────────────────────────────────────
+# Step 1: Load data
+
+# Step 2: Detect clean sweep on daily
+#   sweep_result = full_sweep_scan(instrument, 'DAILY')
+#   clean_sweeps = [s for s in sweep_result['all_sweeps']
+#                   if s['liquidity_event'] == 'SWEEP'
+#                   and s['comfortable_candles'] <= 2
+#                   and s['probability_score'] >= 70.0]
+#   CONDITION: len(clean_sweeps) > 0
+#   If fails: return None
+#   best_sweep = clean_sweeps[0]  # most recent
+#   direction from sweep:
+#     BULLISH sweep (swept lows, continuing higher): direction = BULLISH
+#     BEARISH sweep (swept highs, continuing lower): direction = BEARISH
+
+# Step 3: Find PFVG after sweep
+#   fvg_list = scan_and_classify_all_fvgs(instrument, 'DAILY')
+#   post_sweep_pfvgs = [f for f in fvg_list
+#                       if f['fvg_type'] == 'PFVG'
+#                       and not f['is_mitigated']
+#                       and f['direction'] matches direction
+#                       and f['candle1_datetime'] >= best_sweep['trade_date']]
+#   CONDITION: len(post_sweep_pfvgs) > 0
+#   If fails: return None
+#   entry_fvg = post_sweep_pfvgs[0]
+
+# Step 4: Verify OFL active
+#   ofl_result = full_order_flow_scan(instrument, 'DAILY')
+#   CONDITION: ofl is MEDIUM or HIGH probability
+#   If fails: return None
+
+# Step 5: Calculate entry
+#   entry_price from FVG
+#   SL beyond sweep wick (strongest SL placement)
+#   If BULLISH: stop_loss = best_sweep['sweep_candle_low'] - (3/pip_mult)
+#   If BEARISH: stop_loss = best_sweep['sweep_candle_high'] + (3/pip_mult)
+
+# Step 6: Build signal
+#   entry_model: 'MSS_FVG'
+#   sweep_type: best_sweep['sweep_type']
+#   sweep_probability: best_sweep['probability_score']
+#   wick_size_pips: best_sweep['wick_size_pips']
+
+═══════════════════════════════════════
+D1-S5 SCANNER: Daily MSS + FVG ICT 2022
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_d1_s5(instrument)
+─────────────────────────────────────
+# Step 1: Load data
+
+# Step 2: Detect sweep (BSL or SSL)
+#   sweep_result = full_sweep_scan(instrument, 'DAILY')
+#   qualifying = [s for s in sweep_result['all_sweeps']
+#                 if s['liquidity_event'] == 'SWEEP'
+#                 and s['sweep_type'] in ['ORDER_FLOW_SWEEP', 'TURTLE_SOUP']
+#                 and s['probability_score'] >= 65.0]
+#   CONDITION: len(qualifying) > 0
+#   If fails: return None
+#   best_sweep = qualifying[0]
+
+# Step 3: Confirm MSS — FVG in new direction
+#   mss_result = detect_order_flow_sweep for sweep candle
+#   CONDITION: mss_result.is_ofl_sweep == True
+#   AND mss_result.continuation_fvg exists
+#   If fails: return None
+#   direction from MSS:
+#     Bullish MSS (swept SSL, now going higher) = BULLISH
+#     Bearish MSS (swept BSL, now going lower) = BEARISH
+
+# Step 4: Verify MSS FVG quality
+#   Get continuation_fvg from mss_result
+#   CONDITION: continuation_fvg.fvg_type in ['PFVG', 'BFVG']
+#   AND not mitigated
+#   If fails: return None
+
+# Step 5: Check MSS not invalidated
+#   current_price = df.iloc[-1]['close']
+#   If BULLISH MSS: check price has NOT closed back below swept SSL
+#   If BEARISH MSS: check price has NOT closed back above swept BSL
+#   If invalidated: return None
+
+# Step 6: Calculate entry
+#   entry from MSS FVG
+#   SL beyond swept level (strongest placement)
+
+# Step 7: Build signal
+#   entry_model: 'MSS_FVG'
+#   mss_confirmed: True
+#   swept_level: best_sweep['swept_level']
+#   Note: ICT 2022 model — highest accuracy daily setup
+
+═══════════════════════════════════════
+MASTER DAILY SCANNER
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_all_daily_strategies(instrument)
+─────────────────────────────────────
+# PURPOSE: Run all 5 daily strategy scanners
+# Returns: dict {
+#   instrument,
+#   scan_datetime: str(now),
+#   signals_found: int,
+#   signals: list of signal dicts,
+#   best_signal: highest confidence signal,
+#   strategy_results: {strategy_id: signal or None}
+# }
+# Steps:
+#   scanners = {
+#     'D1-S1': scan_d1_s1,
+#     'D1-S2': scan_d1_s2,
+#     'D1-S3': scan_d1_s3,
+#     'D1-S4': scan_d1_s4,
+#     'D1-S5': scan_d1_s5
+#   }
+#   results = {}
+#   signals = []
+#   For each (sid, scanner_fn) in scanners:
+#     try:
+#       signal = scanner_fn(instrument)
+#       results[sid] = signal
+#       if signal: signals.append(signal)
+#     except Exception as e:
+#       logger.error(f"D1 scanner {sid} error: {e}")
+#       results[sid] = None
+#   signals.sort(key=lambda s: s['confidence_score'], reverse=True)
+#   Return {
+#     instrument,
+#     scan_datetime: datetime.utcnow().isoformat(),
+#     signals_found: len(signals),
+#     signals: signals,
+#     best_signal: signals[0] if signals else None,
+#     strategy_results: results
+#   }
+
+─────────────────────────────────────
+Function: save_daily_signals(signals_list, instrument)
+─────────────────────────────────────
+# Save to backtest/results/daily_signals_{instrument}.json
+# Append if file exists, create if not
+# Each signal gets unique signal_id:
+#   f"{instrument}_{strategy_id}_{datetime_str}"
+
+═══════════════════════════════════════
+PART B — CREATE routes/daily_strategy_routes.py
+═══════════════════════════════════════
+
+Blueprint: daily_strategies_bp
+
+GET /api/strategies/daily/scan
+  Query: instrument (required)
+  Calls: scan_all_daily_strategies(instrument)
+  Returns: {status, result}
+
+GET /api/strategies/daily/scan/<strategy_id>
+  Query: instrument (required)
+  Calls: specific scanner function
+  Returns: {status, signal or null}
+
+GET /api/strategies/daily/signals
+  Query: instrument (optional)
+  Loads from saved JSON files
+  Returns: all saved daily signals
+
+Register in app.py.
+Add this to codebase without any errors.
+Keep ALL existing code intact.
+```
+
+---
+
+## PROMPT-4H: 4H Strategies Scanner
+
+```
+You are building the MMC Trading Backtest Software.
+PROMPT-F1, F2, D1 are implemented.
+Now implement the 4H Strategy Scanner — dedicated scanner
+for 4H-S1 through 4H-S5.
+
+═══════════════════════════════════════
+PART A — CREATE strategies/individual/four_hour_strategies.py
+═══════════════════════════════════════
+
+Imports:
+  [Same as daily_strategies.py plus:]
+  from strategies.individual.daily_strategies import (
+      load_daily_data,
+      get_latest_closed_candle,
+      calculate_daily_targets
+  )
+
+FOUR_HOUR_STRATEGY_IDS = ['4H-S1','4H-S2','4H-S3','4H-S4','4H-S5']
+
+═══════════════════════════════════════
+SHARED 4H UTILITIES
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: load_4h_data(instrument)
+─────────────────────────────────────
+# Returns: dict {'DAILY': df_daily, '4H': df_4h}
+# Validates min candles: DAILY>=100, 4H>=300
+# Raises ValueError if insufficient
+
+─────────────────────────────────────
+Function: get_daily_direction(instrument)
+─────────────────────────────────────
+# Returns: str 'BULLISH', 'BEARISH', or 'NEUTRAL'
+# Steps:
+#   cs_bias = get_candle_science_bias(instrument)
+#   daily_ofl = full_order_flow_scan(instrument, 'DAILY')
+#   Score:
+#     cs_bias.daily_bias == BULLISH → +2
+#     cs_bias.bias_confidence == HIGH → +1
+#     daily_ofl.most_recent_ofl direction BULLISH → +2
+#     daily_ofl.most_recent_ofl.ofl_probability == HIGH → +1
+#   Bearish counts same
+#   Return dominant direction
+
+─────────────────────────────────────
+Function: check_direction_alignment(direction_4h, daily_direction)
+─────────────────────────────────────
+# Returns: bool
+# True if both same direction
+# False if opposite
+# Neutral daily = True (no conflict)
+
+─────────────────────────────────────
+Function: get_4h_ofl_details(instrument)
+─────────────────────────────────────
+# Returns: most recent active 4H OFL dict or None
+# Steps:
+#   ofl_result = full_order_flow_scan(instrument, '4H')
+#   Return ofl_result['most_recent_ofl'] if active
+
+─────────────────────────────────────
+Function: get_4h_targets(df_4h, direction, instrument)
+─────────────────────────────────────
+# Same logic as calculate_daily_targets but for 4H df
+# Returns: {bsl_4h, ssl_4h, ith_4h, itl_4h}
+
+═══════════════════════════════════════
+4H-S1 SCANNER: 4H OFL from Daily Context
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_4h_s1(instrument)
+─────────────────────────────────────
+# Step 1: Load data
+#   data = load_4h_data(instrument)
+#   df_daily = data['DAILY']
+#   df_4h = data['4H']
+
+# Step 2: Check daily bias (HIGH probability required)
+#   daily_ofl = full_order_flow_scan(instrument, 'DAILY')
+#   CONDITION: daily_ofl['most_recent_ofl'] is not None
+#   AND daily_ofl['most_recent_ofl']['ofl_probability'] == 'HIGH'
+#   AND daily_ofl['most_recent_ofl']['is_active']
+#   If fails: return None
+#   daily_direction = daily_ofl['most_recent_ofl']['direction']
+
+# Step 3: Check 4H OFL alignment
+#   ofl_4h = full_order_flow_scan(instrument, '4H')
+#   CONDITION: ofl_4h['most_recent_ofl'] is not None
+#   AND ofl_4h['most_recent_ofl']['ofl_probability'] in ['HIGH', 'MEDIUM']
+#   AND ofl_4h['most_recent_ofl']['is_active']
+#   AND ofl_4h['most_recent_ofl']['direction'] == daily_direction
+#   If fails: return None
+
+# Step 4: Find 4H PFVG
+#   fvg_list = scan_and_classify_all_fvgs(instrument, '4H')
+#   pfvgs = [f for f in fvg_list
+#            if f['fvg_type'] == 'PFVG'
+#            and not f['is_mitigated']
+#            and f['direction'] matches daily_direction
+#            and f['probability_rating'] == 'HIGH']
+#   CONDITION: len(pfvgs) > 0
+#   If fails: return None
+#   best_fvg = pfvgs[0]
+
+# Step 5: Calculate entry + SL
+#   pip_mult = get_pip_multiplier(instrument)
+#   ofl = ofl_4h['most_recent_ofl']
+#   buffer = 2.0 / pip_mult
+#   If BULLISH:
+#     entry_price = best_fvg['fvg_low']
+#     stop_loss = ofl['swing_point_price'] - buffer
+#   If BEARISH:
+#     entry_price = best_fvg['fvg_high']
+#     stop_loss = ofl['swing_point_price'] + buffer
+#   risk = abs(entry_price - stop_loss)
+#   CONDITION: risk > 0
+
+# Step 6: Calculate all TPs
+#   risk_pips = risk * pip_mult
+#   tp1r = entry ± risk
+#   tp2r = entry ± risk*2
+#   tp4r = entry ± risk*4
+#   tp5r = entry ± risk*5
+
+# Step 7: Get daily targets (this is the actual target)
+#   daily_targets = calculate_daily_targets(df_daily, daily_direction, instrument)
+
+# Step 8: Build signal
+#   Return complete signal dict with:
+#   strategy_id: '4H-S1'
+#   timeframe_stack: ['DAILY', '4H']
+#   daily_ofl_probability: 'HIGH'
+#   four_h_ofl_probability: ofl_4h probability
+#   direction_aligned: True
+#   structural_targets: daily_targets
+#   entry_model: 'OFL'
+
+═══════════════════════════════════════
+4H-S2 SCANNER: 4H IT High/Low Break + FVA
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_4h_s2(instrument)
+─────────────────────────────────────
+# Step 1: Load data + confirm daily direction
+#   daily_direction = get_daily_direction(instrument)
+#   CONDITION: daily_direction != 'NEUTRAL'
+#   If fails: return None
+
+# Step 2: Find broken 4H IT point
+#   ms_4h = full_market_structure_scan(instrument, '4H')
+#   broken_its = [p for p in ms_4h['it_points']
+#                 if p['is_broken']
+#                 and p['point_type'] in ['IT_HIGH', 'IT_LOW']]
+#   CONDITION: len(broken_its) > 0
+#   If fails: return None
+#   # Determine direction from broken IT:
+#   broken_it = broken_its[-1]  # most recent
+#   If broken_it['point_type'] == 'IT_HIGH': direction = 'BULLISH'
+#   If broken_it['point_type'] == 'IT_LOW': direction = 'BEARISH'
+#   CONDITION: check_direction_alignment(direction, daily_direction)
+#   If not aligned: return None
+
+# Step 3: Find qualifying 4H FVA
+#   fva_list = scan_and_classify_all_fvas(instrument, '4H')
+#   qualifying = [f for f in fva_list
+#                 if f['fva_type'] in ['IDEAL', 'GOOD']
+#                 and f['has_overlapping_fvg']
+#                 and not f['is_sweep']
+#                 and f['probability_score'] >= 70.0
+#                 and f['direction'] == direction]
+#   CONDITION: len(qualifying) > 0
+#   best_fva = qualifying[0]
+
+# Step 4: Check market state
+#   current_price = df_4h.iloc[-1]['close']
+#   fv_check = fair_value_theory_check(
+#     current_price, best_fva['fva_high'], best_fva['fva_low'], direction)
+#   CONDITION: fv_check['state'] == 'OFFERING_FAIR_VALUE'
+#   If SEEKING_LIQUIDITY: return None
+
+# Step 5: Get overlapping FVG for entry
+#   Get FVG that overlaps with FVA boundary from fva details
+#   CONDITION: overlapping FVG exists and is PFVG
+#   entry_price from overlapping FVG
+
+# Step 6: SL beyond FVA boundary
+#   If BULLISH: stop_loss = best_fva['fva_low'] - (3/pip_mult)
+#   If BEARISH: stop_loss = best_fva['fva_high'] + (3/pip_mult)
+
+# Step 7: Build signal
+#   fva_type: best_fva['fva_type']
+#   probability_arrays: best_fva['probability_arrays']
+#   market_state: 'OFFERING_FAIR_VALUE'
+#   entry_model: 'OFL'
+#   strategy_id: '4H-S2'
+
+═══════════════════════════════════════
+4H-S3 SCANNER: 4H Liquidity Sweep Continuation
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_4h_s3(instrument)
+─────────────────────────────────────
+# Step 1: Confirm daily direction
+#   daily_direction = get_daily_direction(instrument)
+
+# Step 2: Find clean 4H sweep
+#   sweep_result = full_sweep_scan(instrument, '4H')
+#   clean_sweeps = [s for s in sweep_result['all_sweeps']
+#                   if s['liquidity_event'] == 'SWEEP'
+#                   and s['comfortable_candles'] <= 2
+#                   and s['probability_score'] >= 68.0]
+#   CONDITION: len(clean_sweeps) > 0
+#   best_sweep = clean_sweeps[0]
+#   sweep_direction = best_sweep['sweep_direction']
+#   CONDITION: check_direction_alignment(sweep_direction, daily_direction)
+
+# Step 3: Find post-sweep PFVG
+#   fvg_list = scan_and_classify_all_fvgs(instrument, '4H')
+#   post_sweep = [f for f in fvg_list
+#                 if f['fvg_type'] == 'PFVG'
+#                 and not f['is_mitigated']
+#                 and f['direction'] == sweep_direction
+#                 and f['candle1_datetime'] >= best_sweep['trade_date']]
+#   CONDITION: len(post_sweep) > 0
+#   entry_fvg = post_sweep[0]
+
+# Step 4: Entry and SL
+#   entry from FVG
+#   SL beyond sweep wick
+#   If BULLISH: stop_loss = best_sweep['sweep_candle_low'] - (3/pip_mult)
+#   If BEARISH: stop_loss = best_sweep['sweep_candle_high'] + (3/pip_mult)
+
+# Step 5: Build signal
+#   entry_model: 'MSS_FVG'
+#   strategy_id: '4H-S3'
+#   sweep_confirmed: True
+#   daily_aligned: True
+
+═══════════════════════════════════════
+4H-S4 SCANNER: 4H MSS + FVG ICT 2022
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_4h_s4(instrument)
+─────────────────────────────────────
+# Step 1: Confirm daily HIGH probability OFL
+#   daily_ofl = full_order_flow_scan(instrument, 'DAILY')
+#   CONDITION: HIGH probability and active
+#   daily_direction from OFL
+
+# Step 2: Detect 4H BSL/SSL sweep
+#   sweep_result = full_sweep_scan(instrument, '4H')
+#   qualifying = [s for s in sweep_result['all_sweeps']
+#                 if s['liquidity_event'] == 'SWEEP'
+#                 and s['sweep_type'] in ['ORDER_FLOW_SWEEP', 'TURTLE_SOUP']
+#                 and s['sweep_direction'] == daily_direction]
+#   CONDITION: len(qualifying) > 0
+#   best_sweep = qualifying[0]
+
+# Step 3: Confirm MSS
+#   mss = detect_order_flow_sweep for sweep candle on 4H
+#   CONDITION: mss.is_ofl_sweep == True
+#   AND mss.continuation_fvg exists
+
+# Step 4: Verify MSS FVG is PFVG
+#   cont_fvg = mss.continuation_fvg
+#   CONDITION: cont_fvg.fvg_type == 'PFVG'
+#   AND not mitigated
+
+# Step 5: Verify MSS not invalidated
+#   current_price check vs swept level
+
+# Step 6: Entry and SL
+#   entry from MSS PFVG
+#   SL beyond swept BSL/SSL level
+#   strategy_id: '4H-S4'
+#   entry_model: 'MSS_FVG'
+#   mss_confirmed: True
+
+═══════════════════════════════════════
+4H-S5 SCANNER: 4H Candle Science + OFL
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_4h_s5(instrument)
+─────────────────────────────────────
+# Step 1: Get weekly candle science
+#   weekly_cs = get_candle_science_bias(instrument)
+#   weekly_bias = weekly_cs['weekly_bias']
+#   weekly_confidence = weekly_cs['weekly_confidence']
+#   CONDITION: weekly_bias in ['BULLISH', 'BEARISH']
+#   AND weekly_confidence >= 65.0
+#   If fails: return None
+
+# Step 2: Get 4H OFL aligning with weekly CS
+#   ofl_4h = full_order_flow_scan(instrument, '4H')
+#   CONDITION: ofl_4h most_recent_ofl is HIGH probability
+#   AND direction == weekly_bias
+#   If fails: return None
+
+# Step 3: Find 4H PFVG
+#   fvg_list = scan_and_classify_all_fvgs(instrument, '4H')
+#   pfvgs = [f for f in fvg_list
+#            if f['fvg_type'] == 'PFVG'
+#            and not f['is_mitigated']
+#            and f['direction'] == weekly_bias
+#            and f['probability_rating'] == 'HIGH']
+#   CONDITION: len(pfvgs) > 0
+#   entry_fvg = pfvgs[0]
+
+# Step 4: Entry and SL
+#   entry from PFVG
+#   SL above/below 4H OFL swing
+
+# Step 5: Build signal
+#   weekly_cs_direction: weekly_bias
+#   weekly_confidence: weekly_confidence
+#   strategy_id: '4H-S5'
+#   entry_model: 'OFL'
+#   timeframe_stack: ['WEEKLY', '4H']
+
+═══════════════════════════════════════
+MASTER 4H SCANNER
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_all_4h_strategies(instrument)
+─────────────────────────────────────
+# Same pattern as scan_all_daily_strategies
+# Runs all 5 scanners, collects signals
+# Sorts by confidence_score descending
+# Returns same result schema
+# Save to: backtest/results/4h_signals_{instrument}.json
+
+Routes in routes/four_hour_strategy_routes.py:
+  GET /api/strategies/4h/scan → scan_all_4h_strategies
+  GET /api/strategies/4h/scan/<strategy_id> → specific scanner
+  GET /api/strategies/4h/signals → saved signals
+
+Register in app.py.
+Add this to codebase without any errors.
+Keep ALL existing code intact.
+```
+
+---
+
+## PROMPT-1H: 1H Strategies Scanner
+
+```
+You are building the MMC Trading Backtest Software.
+PROMPT-F1, F2, D1, 4H are implemented.
+Now implement the 1H Strategy Scanner — dedicated scanner
+for 1H-S1 through 1H-S5.
+
+═══════════════════════════════════════
+PART A — CREATE strategies/individual/one_hour_strategies.py
+═══════════════════════════════════════
+
+Imports:
+  [Same as four_hour_strategies.py plus:]
+  from strategies.individual.four_hour_strategies import (
+      load_4h_data,
+      get_daily_direction,
+      get_4h_ofl_details,
+      check_direction_alignment
+  )
+  from modules.video9_time import is_in_killzone
+  from modules.video10_11_context_entries import (
+      build_sharp_turn,
+      full_context_scan
+  )
+
+ONE_HOUR_STRATEGY_IDS = ['1H-S1','1H-S2','1H-S3','1H-S4','1H-S5']
+
+═══════════════════════════════════════
+SHARED 1H UTILITIES
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: load_1h_data(instrument)
+─────────────────────────────────────
+# Returns: dict {'DAILY': df, '4H': df, '1H': df}
+# Validates: DAILY>=100, 4H>=300, 1H>=500
+# Raises ValueError if insufficient
+
+─────────────────────────────────────
+Function: check_ny_killzone(current_datetime_str, instrument)
+─────────────────────────────────────
+# Returns: dict {in_killzone, session_name, time_remaining_mins}
+# Wraps is_in_killzone with NY forex session defaults
+# Forex: 08:00-12:00 NY
+# XAUUSD: 08:00-12:00 NY (gold follows forex hours)
+
+─────────────────────────────────────
+Function: get_4h_context_active(instrument)
+─────────────────────────────────────
+# Returns: most recent active 4H context area or None
+# Steps:
+#   contexts = full_context_scan(instrument, '4H')
+#   active = [c for c in contexts if c['is_active']]
+#   Return active[0] if active else None
+
+─────────────────────────────────────
+Function: get_1h_ofl(instrument)
+─────────────────────────────────────
+# Returns: most recent active 1H OFL dict or None
+#   ofl_result = full_order_flow_scan(instrument, '1H')
+#   Return ofl_result['most_recent_ofl'] if active
+
+─────────────────────────────────────
+Function: calculate_1h_entry_price(fvg, direction)
+─────────────────────────────────────
+# Returns: float entry price
+# BULLISH: fvg['fvg_low']
+# BEARISH: fvg['fvg_high']
+
+─────────────────────────────────────
+Function: calculate_1h_stop_loss(ofl, direction, instrument, buffer_pips=2)
+─────────────────────────────────────
+# Returns: float stop loss price
+# pip_mult = get_pip_multiplier(instrument)
+# buffer = buffer_pips / pip_mult
+# BULLISH: ofl['swing_point_price'] - buffer
+# BEARISH: ofl['swing_point_price'] + buffer
+
+═══════════════════════════════════════
+1H-S1 SCANNER: 1H OFL from 4H Context
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_1h_s1(instrument, current_datetime_str=None)
+─────────────────────────────────────
+# Step 1: Load data
+#   data = load_1h_data(instrument)
+#   If current_datetime_str is None:
+#     current_datetime_str = datetime.utcnow().isoformat()
+
+# Step 2: Check 4H OFL is HIGH probability
+#   ofl_4h = get_4h_ofl_details(instrument)
+#   CONDITION: ofl_4h is not None
+#   AND ofl_4h['ofl_probability'] == 'HIGH'
+#   AND ofl_4h['is_active']
+#   If fails: return None
+#   direction = ofl_4h['direction']
+
+# Step 3: Check 1H OFL aligns with 4H
+#   ofl_1h = get_1h_ofl(instrument)
+#   CONDITION: ofl_1h is not None
+#   AND ofl_1h['ofl_probability'] in ['HIGH', 'MEDIUM']
+#   AND ofl_1h['is_active']
+#   AND ofl_1h['direction'] == direction
+#   If fails: return None
+
+# Step 4: Find 1H PFVG
+#   fvg_list = scan_and_classify_all_fvgs(instrument, '1H')
+#   pfvgs = [f for f in fvg_list
+#            if f['fvg_type'] == 'PFVG'
+#            and not f['is_mitigated']
+#            and f['direction'] == direction
+#            and f['probability_rating'] == 'HIGH']
+#   CONDITION: len(pfvgs) > 0
+#   entry_fvg = pfvgs[0]
+
+# Step 5: Check kill zone (WARN not FAIL)
+#   kz = check_ny_killzone(current_datetime_str, instrument)
+#   in_kz = kz['in_killzone']
+#   If not in_kz: log warning but DO NOT return None
+
+# Step 6: Calculate entry and SL
+#   entry_price = calculate_1h_entry_price(entry_fvg, direction)
+#   stop_loss = calculate_1h_stop_loss(ofl_1h, direction, instrument, buffer_pips=2)
+#   risk = abs(entry_price - stop_loss)
+#   CONDITION: risk > 0
+
+# Step 7: Calculate TPs
+#   pip_mult = get_pip_multiplier(instrument)
+#   risk_pips = risk * pip_mult
+#   tp1r, tp2r, tp4r, tp5r as standard
+
+# Step 8: Get 4H context target
+#   context = get_4h_context_active(instrument)
+#   structural_target = context['target_price'] if context else None
+
+# Step 9: Build signal
+#   Return {
+#     strategy_id: '1H-S1',
+#     instrument, direction,
+#     entry_price, stop_loss,
+#     take_profit_1r: tp1r,
+#     take_profit_2r: tp2r,
+#     take_profit_4r: tp4r,
+#     take_profit_5r: tp5r,
+#     risk_pips: round(risk_pips, 2),
+#     confidence_score: calculate based on probabilities,
+#     entry_model: 'OFL',
+#     fvg_type: 'PFVG',
+#     in_killzone: in_kz,
+#     killzone_warning: not in_kz,
+#     4h_ofl_probability: 'HIGH',
+#     1h_ofl_probability: ofl_1h['ofl_probability'],
+#     structural_target: structural_target,
+#     timeframe_stack: ['4H', '1H']
+#   }
+
+═══════════════════════════════════════
+1H-S2 SCANNER: 1H Sharp Turn
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_1h_s2(instrument, current_datetime_str=None)
+─────────────────────────────────────
+# Step 1: Load data + confirm 4H context HIGH probability
+#   ofl_4h = get_4h_ofl_details(instrument)
+#   CONDITION: HIGH probability and active
+
+# Step 2: Check kill zone (WARN)
+#   kz = check_ny_killzone(current_datetime_str, instrument)
+
+# Step 3: Detect sharp turn on 1H
+#   fvg_list = scan_and_classify_all_fvgs(instrument, '1H')
+#   Get last 10 candles to find FVG in + FVG out pattern
+#   For each consecutive FVG pair (i, i+1):
+#     fvg_in = fvg_list[i]
+#     fvg_out = fvg_list[i+1]
+#     Check:
+#       fvg_in direction OPPOSITE to trade direction (trap)
+#       fvg_out direction = trade direction (confirm)
+#       Both not mitigated
+#       candles_between <= 8 (SLOW allowed but penalized)
+#   CONDITION: valid sharp turn pair found
+#   If fails: return None
+#   best_pair = highest quality (fewest candles between)
+
+# Step 4: Determine speed quality
+#   candles_between = fvg_out.candle_index - fvg_in.candle_index
+#   If <= 3: speed_quality = 'FAST', confidence_bonus = 15
+#   If <= 8: speed_quality = 'MEDIUM', confidence_bonus = 5
+#   Else: speed_quality = 'SLOW', confidence_penalty = 10
+#   CONDITION: speed_quality != 'SLOW' (SLOW not allowed per strategy)
+
+# Step 5: Entry and SL from FVG out
+#   direction from FVG out direction
+#   entry_price from FVG out (entry_high or entry_low)
+#   SL from most recent 1H OFL swing
+#   ofl_1h = get_1h_ofl(instrument)
+#   stop_loss = calculate_1h_stop_loss(ofl_1h, direction, instrument)
+
+# Step 6: Build signal
+#   entry_model: 'SHARP_TURN'
+#   speed_quality: speed_quality
+#   fvg_in_high, fvg_in_low, fvg_out_high, fvg_out_low
+#   candles_between: candles_between
+#   confidence_score includes speed bonus/penalty
+
+═══════════════════════════════════════
+1H-S3 SCANNER: 1H MSS + FVG ICT 2022
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_1h_s3(instrument, current_datetime_str=None)
+─────────────────────────────────────
+# Step 1: Confirm 4H HIGH probability OFL
+#   CONDITION: ofl_4h HIGH and active
+
+# Step 2: Detect 1H sweep aligning with 4H direction
+#   sweep_result = full_sweep_scan(instrument, '1H')
+#   qualifying = [s for s in sweep_result['all_sweeps']
+#                 if s['liquidity_event'] == 'SWEEP'
+#                 and s['probability_score'] >= 65.0
+#                 and s['sweep_direction'] == ofl_4h['direction']]
+#   CONDITION: len(qualifying) > 0
+#   best_sweep = qualifying[0]
+
+# Step 3: Confirm 1H MSS
+#   mss = detect_order_flow_sweep for best_sweep candle
+#   CONDITION: is_ofl_sweep == True
+#   AND continuation_fvg exists
+
+# Step 4: Verify continuation FVG quality
+#   CONDITION: continuation_fvg.fvg_type in ['PFVG', 'BFVG']
+#   Best case: PFVG
+#   BFVG allowed but lower confidence
+
+# Step 5: Check MSS not invalidated
+#   current_price vs swept level
+
+# Step 6: Kill zone check (WARN)
+
+# Step 7: Entry and SL
+#   entry from MSS FVG
+#   SL beyond swept level
+
+# Step 8: Build signal
+#   entry_model: 'MSS_FVG'
+#   mss_confirmed: True
+#   4h_aligned: True
+#   strategy_id: '1H-S3'
+
+═══════════════════════════════════════
+1H-S4 SCANNER: 1H OFL Sweep Entry
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_1h_s4(instrument, current_datetime_str=None)
+─────────────────────────────────────
+# Step 1: Confirm 4H HIGH probability
+
+# Step 2: Detect OFL sweep on 1H
+#   mss_result = detect_order_flow_sweep for 1H data
+#   CONDITION: is_ofl_sweep == True
+#   AND sweep_type == 'ORDER_FLOW_SWEEP'
+#   AND continuation_fvg exists
+
+# Step 3: Get post-sweep PFVG
+#   CONDITION: continuation_fvg.fvg_type == 'PFVG'
+#   AND not mitigated
+
+# Step 4: Verify original 1H FVG is mitigated
+#   (The original FVG was entered but failed — should be mitigated now)
+#   original_fvg should show is_mitigated == True
+#   This confirms the sweep scenario happened correctly
+
+# Step 5: Kill zone (WARN)
+
+# Step 6: Entry from post-sweep PFVG
+#   SL beyond swept swing level
+
+# Step 7: Build signal
+#   entry_model: 'OFL'
+#   ofl_sweep_confirmed: True
+#   original_fvg_mitigated: True
+#   strategy_id: '1H-S4'
+
+═══════════════════════════════════════
+1H-S5 SCANNER: 1H Candle Science Sweep
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_1h_s5(instrument, current_datetime_str=None)
+─────────────────────────────────────
+# Step 1: Confirm 4H HIGH probability
+
+# Step 2: Detect CS sweep on 1H
+#   Get recent 1H candle data
+#   For each pair of consecutive candles:
+#     cs_sweep = detect_candle_science_sweep(candle_df, context_fvg,
+#                                             direction, instrument)
+#     CONDITION: cs_sweep.is_cs_sweep == True
+#     AND cs_sweep.swept_level exists
+#   CONDITION: valid CS sweep found
+#   If fails: return None
+#   best_cs = most recent valid CS sweep
+
+# Step 3: Find post-CS-sweep PFVG
+#   fvg_list after cs_sweep datetime
+#   CONDITION: PFVG exists after sweep
+#   AND not mitigated
+
+# Step 4: Kill zone (WARN)
+
+# Step 5: Entry from post-CS-sweep PFVG
+#   SL beyond swept PCH or PCL
+
+# Step 6: Build signal
+#   entry_model: 'MSS_FVG'
+#   cs_sweep_confirmed: True
+#   swept_pchl: best_cs['swept_level']
+#   strategy_id: '1H-S5'
+
+═══════════════════════════════════════
+MASTER 1H SCANNER
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_all_1h_strategies(instrument, current_datetime_str=None)
+─────────────────────────────────────
+# Same pattern as daily and 4H master scanners
+# Save to: backtest/results/1h_signals_{instrument}.json
+# Route: GET /api/strategies/1h/scan
+
+Register routes in routes/one_hour_strategy_routes.py
+Add blueprint to app.py
+Add this to codebase without any errors.
+Keep ALL existing code intact.
+```
+
+---
+
+## PROMPT-TD1: Top Down Filtering Process Strategies
+
+```
+You are building the MMC Trading Backtest Software.
+PROMPT-F1 through 1H are implemented.
+Now implement Top Down Filtering Process Strategy Scanners
+TD-FP-S1 through TD-FP-S4.
+
+═══════════════════════════════════════
+PART A — CREATE strategies/top_down/filtering_process.py
+═══════════════════════════════════════
+
+Imports:
+  [All previous imports plus all individual scanners]
+  from strategies.individual.daily_strategies import (
+      scan_all_daily_strategies, load_daily_data,
+      calculate_daily_targets
+  )
+  from strategies.individual.four_hour_strategies import (
+      scan_all_4h_strategies, get_daily_direction,
+      get_4h_ofl_details
+  )
+  from strategies.individual.one_hour_strategies import (
+      scan_all_1h_strategies, get_1h_ofl
+  )
+
+FILTERING_STRATEGY_IDS = ['TD-FP-S1','TD-FP-S2','TD-FP-S3','TD-FP-S4']
+
+═══════════════════════════════════════
+SHARED FILTERING PROCESS UTILITIES
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: load_filtering_data(instrument)
+─────────────────────────────────────
+# Returns: dict with all required TF DataFrames
+# {MONTHLY, WEEKLY, DAILY, 4H, 1H}
+# Validates each meets minimum candle requirements:
+#   MONTHLY >= 24
+#   WEEKLY  >= 52
+#   DAILY   >= 200
+#   4H      >= 500
+#   1H      >= 500
+
+─────────────────────────────────────
+Function: count_arguments(instrument, direction)
+─────────────────────────────────────
+# PURPOSE: Count bullish or bearish arguments across all TFs
+# Returns: dict {bullish_score, bearish_score, arguments_list}
+# Count for each TF:
+#   MONTHLY candle science bullish → +2 (highest weight)
+#   WEEKLY candle science bullish → +2
+#   DAILY OFL bullish HIGH prob → +3
+#   DAILY OFL bullish MEDIUM prob → +1
+#   4H OFL bullish HIGH → +2
+#   4H FVA IDEAL bullish → +1
+#   1H OFL bullish → +1
+#   Same scoring inverted for bearish
+# Return total scores and argument list with sources
+
+─────────────────────────────────────
+Function: get_monthly_candle_science(instrument)
+─────────────────────────────────────
+# Returns: dict {direction, candle_type, confidence}
+# fetch monthly candles
+# analyze last closed monthly candle
+# Return direction and confidence
+
+─────────────────────────────────────
+Function: get_weekly_candle_science(instrument)
+─────────────────────────────────────
+# Same as monthly but weekly TF
+
+─────────────────────────────────────
+Function: validate_no_mixed_signals(bullish_score, bearish_score)
+─────────────────────────────────────
+# Returns: bool
+# True if one side clearly dominant (score diff >= 2)
+# False if mixed (too close)
+# MMC Rule: mixed signals = avoid trade
+
+═══════════════════════════════════════
+TD-FP-S1 SCANNER: Full Stack Monthly to 4H
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_td_fp_s1(instrument)
+─────────────────────────────────────
+# Step 1: Load all TF data
+#   data = load_filtering_data(instrument)
+
+# Step 2: Monthly candle science
+#   monthly_cs = get_monthly_candle_science(instrument)
+#   CONDITION: monthly_cs.direction in ['BULLISH', 'BEARISH']
+#   AND monthly_cs.confidence >= 65.0
+#   If fails: return None
+#   macro_direction = monthly_cs.direction
+
+# Step 3: Weekly candle science must confirm monthly
+#   weekly_cs = get_weekly_candle_science(instrument)
+#   CONDITION: weekly_cs.direction == macro_direction
+#   AND weekly_cs.confidence >= 60.0
+#   If fails (weekly contradicts monthly): return None
+
+# Step 4: Daily OFL must align (HIGH probability)
+#   daily_ofl = full_order_flow_scan(instrument, 'DAILY')
+#   CONDITION: daily_ofl most_recent_ofl HIGH probability
+#   AND direction == macro_direction
+#   If fails: return None
+
+# Step 5: 4H PFVG as entry
+#   fvg_list = scan_and_classify_all_fvgs(instrument, '4H')
+#   pfvgs = [f for f in fvg_list
+#            if f['fvg_type'] == 'PFVG'
+#            and not f['is_mitigated']
+#            and f['direction'] == macro_direction
+#            and f['probability_rating'] == 'HIGH']
+#   CONDITION: len(pfvgs) > 0
+#   entry_fvg = pfvgs[0]
+
+# Step 6: Count arguments — MINIMUM 3 required
+#   args = count_arguments(instrument, macro_direction)
+#   CONDITION: args.bullish_score >= 3 (if BULLISH)
+#              OR args.bearish_score >= 3 (if BEARISH)
+#   CONDITION: validate_no_mixed_signals(bullish, bearish)
+#   If mixed signals: return None
+
+# Step 7: Entry and SL
+#   4H entry from PFVG
+#   SL from 4H OFL swing
+#   pip_mult = get_pip_multiplier(instrument)
+#   Standard TP calculation
+
+# Step 8: Build signal
+#   strategy_id: 'TD-FP-S1'
+#   entry_model: 'OFL'
+#   timeframe_stack: ['MONTHLY', 'WEEKLY', 'DAILY', '4H']
+#   monthly_direction: macro_direction
+#   monthly_confidence: monthly_cs.confidence
+#   weekly_direction: weekly_cs.direction
+#   weekly_confidence: weekly_cs.confidence
+#   daily_ofl_probability: 'HIGH'
+#   arguments_bullish: args.bullish_score
+#   arguments_bearish: args.bearish_score
+#   minimum_arguments_met: True
+#   no_mixed_signals: True
+#   confidence_score: calculate from argument counts
+
+═══════════════════════════════════════
+TD-FP-S2 SCANNER: Weekly→Daily→4H Stack
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_td_fp_s2(instrument)
+─────────────────────────────────────
+# Step 1: Weekly OFL direction confirmed
+#   weekly_ofl = full_order_flow_scan(instrument, 'WEEKLY')
+#   CONDITION: HIGH or MEDIUM probability, active
+#   weekly_direction from OFL
+
+# Step 2: Daily FVG or FVA context active
+#   daily_contexts = full_context_scan(instrument, 'DAILY')
+#   active_contexts = [c for c in daily_contexts
+#                      if c['is_active']
+#                      and c['direction'] == weekly_direction]
+#   CONDITION: len(active_contexts) > 0
+#   best_context = active_contexts[0]
+
+# Step 3: 4H OFL entry
+#   ofl_4h = get_4h_ofl_details(instrument)
+#   CONDITION: MEDIUM or HIGH probability
+#   AND direction == weekly_direction
+
+# Step 4: 4H PFVG
+#   Standard PFVG scan and validation
+#   direction must match weekly
+
+# Step 5: Build signal
+#   strategy_id: 'TD-FP-S2'
+#   timeframe_stack: ['WEEKLY', 'DAILY', '4H']
+#   weekly_ofl: details
+#   daily_context_type: best_context['boundary_type']
+
+═══════════════════════════════════════
+TD-FP-S3 SCANNER: Daily→4H→1H Stack
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_td_fp_s3(instrument)
+─────────────────────────────────────
+# Step 1: Daily OFL + FVA active
+#   daily_ofl = full_order_flow_scan(instrument, 'DAILY')
+#   CONDITION: HIGH probability, active
+#   fva_daily = scan_and_classify_all_fvas(instrument, 'DAILY')
+#   active_fvas = [f for f in fva_daily
+#                  if f['fva_type'] in ['IDEAL', 'GOOD']
+#                  and not f['is_mitigated']
+#                  and f['direction'] == daily_direction]
+#   CONDITION: len(active_fvas) > 0
+
+# Step 2: 4H IT High/Low confirmed, FVA respected
+#   ms_4h = full_market_structure_scan(instrument, '4H')
+#   CONDITION: trend direction matches daily
+#   4h_fva = get_tradeable_fvas(instrument, '4H')
+#   CONDITION: IDEAL or GOOD FVA on 4H
+
+# Step 3: 1H OFL or sharp turn entry
+#   Try 1H OFL first:
+#     ofl_1h = get_1h_ofl(instrument)
+#     If HIGH probability: use OFL entry
+#   If no OFL: try sharp turn scan_1h_s2()
+
+# Step 4: Must be in kill zone
+#   kz = check_ny_killzone(current_datetime_str, instrument)
+#   CONDITION: in_killzone == True (HARD requirement for 1H entry)
+
+# Step 5: Build signal
+#   strategy_id: 'TD-FP-S3'
+#   timeframe_stack: ['DAILY', '4H', '1H']
+#   entry_tf: '1H'
+
+═══════════════════════════════════════
+TD-FP-S4 SCANNER: MSS Top Down
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_td_fp_s4(instrument)
+─────────────────────────────────────
+# Step 1: Daily BSL/SSL swept
+#   daily_sweeps = full_sweep_scan(instrument, 'DAILY')
+#   CONDITION: recent SWEEP on daily
+
+# Step 2: Daily MSS confirmed by daily FVG
+#   mss_daily = detect_order_flow_sweep for daily sweep
+#   CONDITION: is_ofl_sweep, continuation_fvg exists
+
+# Step 3: 4H OFL in MSS direction
+#   CONDITION: 4H OFL aligns with daily MSS direction
+
+# Step 4: 1H OFL or sharp turn as entry
+#   In kill zone preferred
+
+# Step 5: Build signal
+#   strategy_id: 'TD-FP-S4'
+#   timeframe_stack: ['DAILY', '4H', '1H']
+#   daily_mss_confirmed: True
+#   mss_direction: direction
+#   swept_level: daily sweep level
+
+═══════════════════════════════════════
+MASTER FILTERING SCANNER
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_all_filtering_strategies(instrument)
+─────────────────────────────────────
+# Runs all 4 filtering strategy scanners
+# Returns same result schema as other master scanners
+# Save to: backtest/results/filtering_signals_{instrument}.json
+
+Routes in routes/filtering_strategy_routes.py:
+  GET /api/strategies/filtering/scan
+  GET /api/strategies/filtering/scan/<strategy_id>
+  GET /api/strategies/filtering/signals
+  GET /api/strategies/filtering/arguments → count_arguments result
+
+Register in app.py.
+Add this to codebase without any errors.
+Keep ALL existing code intact.
+```
+
+---
+
+## PROMPT-TD2: Flow Trader NY Session 5M Strategies
+
+```
+You are building the MMC Trading Backtest Software.
+All previous prompts implemented.
+Now implement Flow Trader NY Session Strategy Scanners
+TD-FT-S1 through TD-FT-S4. These are the primary
+high-accuracy 5M NY session strategies.
+
+═══════════════════════════════════════
+PART A — CREATE strategies/top_down/flow_trader.py
+═══════════════════════════════════════
+
+Imports:
+  [All previous imports]
+  from strategies.individual.one_hour_strategies import (
+      load_1h_data, check_ny_killzone,
+      get_4h_context_active, get_1h_ofl
+  )
+  import pytz
+  from datetime import datetime, time
+
+FLOW_STRATEGY_IDS = ['TD-FT-S1','TD-FT-S2','TD-FT-S3','TD-FT-S4']
+
+NY_SESSION_START = time(8, 0)   # 08:00 AM ET
+NY_SESSION_END   = time(12, 0)  # 12:00 PM ET
+NY_TIMEZONE      = pytz.timezone('America/New_York')
+
+═══════════════════════════════════════
+SHARED FLOW TRADER UTILITIES
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: load_flow_data(instrument)
+─────────────────────────────────────
+# Returns: dict {'DAILY','4H','1H','15M','5M'}
+# Validates:
+#   DAILY >= 100
+#   4H    >= 300
+#   1H    >= 500
+#   15M   >= 1000
+#   5M    >= 2000
+# Raises ValueError if any TF insufficient
+# This is the MOST data-intensive function
+# Explicitly fetch each TF and validate
+
+─────────────────────────────────────
+Function: is_ny_session(current_datetime_str)
+─────────────────────────────────────
+# Returns: dict {in_session, time_elapsed_mins, time_remaining_mins}
+# Steps:
+#   Parse current_datetime_str
+#   Convert to NY timezone using pytz
+#   ny_time = converted.time()
+#   in_session = NY_SESSION_START <= ny_time <= NY_SESSION_END
+#   If in_session:
+#     elapsed = (ny_time.hour*60 + ny_time.minute) -
+#               (NY_SESSION_START.hour*60)
+#     remaining = (NY_SESSION_END.hour*60) -
+#                 (ny_time.hour*60 + ny_time.minute)
+#   Return dict
+#   Note: This is HARD requirement — outside session = no signal
+
+─────────────────────────────────────
+Function: get_15m_ofl(instrument)
+─────────────────────────────────────
+# Returns most recent active 15M OFL or None
+#   ofl = full_order_flow_scan(instrument, '15M')
+#   Return most_recent_ofl if active
+
+─────────────────────────────────────
+Function: get_5m_pfvg(instrument, direction)
+─────────────────────────────────────
+# Returns best 5M PFVG matching direction or None
+# Steps:
+#   fvg_list = scan_and_classify_all_fvgs(instrument, '5M')
+#   pfvgs = [f for f in fvg_list
+#            if f['fvg_type'] == 'PFVG'
+#            and not f['is_mitigated']
+#            and f['direction'] == direction
+#            and f['probability_rating'] == 'HIGH']
+#   Return pfvgs[0] if pfvgs else None
+
+─────────────────────────────────────
+Function: detect_15m_mss(instrument, direction)
+─────────────────────────────────────
+# Detect MSS on 15M timeframe
+# Returns: dict {mss_detected, continuation_fvg, swept_level} or None
+# Steps:
+#   sweep_result = full_sweep_scan(instrument, '15M')
+#   qualifying = [s for s in sweep_result['all_sweeps']
+#                 if s['liquidity_event'] == 'SWEEP'
+#                 and s['sweep_direction'] == direction
+#                 and s['probability_score'] >= 60.0]
+#   If no qualifying: return {mss_detected: False}
+#   best_sweep = qualifying[0]
+#   mss = detect_order_flow_sweep for this sweep
+#   Return {
+#     mss_detected: mss.is_ofl_sweep,
+#     continuation_fvg: mss.continuation_fvg,
+#     swept_level: best_sweep.swept_level,
+#     sweep_probability: best_sweep.probability_score
+#   }
+
+─────────────────────────────────────
+Function: check_double_confirmation(ofl_15m, mss_15m)
+─────────────────────────────────────
+# Returns: dict {double_confirm, ofl_present, mss_present, bonus}
+# ofl_present = ofl_15m is not None and active
+# mss_present = mss_15m is not None and mss_detected
+# double_confirm = ofl_present AND mss_present
+# If double_confirm: bonus = 20.0
+# Else: bonus = 0.0
+# This is the BOOM signal from the MMC strategy
+
+─────────────────────────────────────
+Function: calculate_5m_risk(entry_fvg, direction, ofl_5m, instrument)
+─────────────────────────────────────
+# Returns: dict {entry_price, stop_loss, risk_pips}
+# pip_mult = get_pip_multiplier(instrument)
+# buffer = 1.0 / pip_mult  # tight buffer for 5M
+# If BULLISH:
+#   entry_price = entry_fvg['fvg_low']
+#   Get 5M OFL swing:
+#   ofl_5m = full_order_flow_scan(instrument, '5M')
+#   stop_loss = ofl_5m.swing_point_price - buffer
+# If BEARISH:
+#   entry_price = entry_fvg['fvg_high']
+#   stop_loss = ofl_5m.swing_point_price + buffer
+# risk = abs(entry_price - stop_loss)
+# If risk <= 0: raise ValueError
+# risk_pips = risk * pip_mult
+# Return dict
+
+═══════════════════════════════════════
+TD-FT-S1 SCANNER: NY Session 5M Primary
+(THE PRIMARY HIGH ACCURACY STRATEGY)
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_td_ft_s1(instrument, current_datetime_str=None)
+─────────────────────────────────────
+# This is the PRIMARY strategy — highest accuracy
+# ALL conditions must be evaluated in exact order
+# HARD session requirement — return None if outside NY
+
+# Step 0: Check NY session FIRST (hard requirement)
+#   If current_datetime_str is None:
+#     current_datetime_str = datetime.utcnow().isoformat()
+#   session = is_ny_session(current_datetime_str)
+#   CONDITION: session.in_session == True
+#   If NOT in session: return None immediately
+#   # No point running rest of checks outside session
+
+# Step 1: Load all 5 TF data
+#   data = load_flow_data(instrument)
+
+# Step 2: Daily OFL HIGH probability (macro direction)
+#   daily_ofl = full_order_flow_scan(instrument, 'DAILY')
+#   CONDITION: daily_ofl['most_recent_ofl'] is not None
+#   AND daily_ofl['most_recent_ofl']['ofl_probability'] == 'HIGH'
+#   AND daily_ofl['most_recent_ofl']['is_active']
+#   If fails: return None
+#   direction = daily_ofl['most_recent_ofl']['direction']
+
+# Step 3: 4H FVA context (IDEAL or GOOD with overlapping FVG)
+#   fva_list = scan_and_classify_all_fvas(instrument, '4H')
+#   qualifying_fvas = [f for f in fva_list
+#                      if f['fva_type'] in ['IDEAL', 'GOOD']
+#                      and f['has_overlapping_fvg']
+#                      and f['probability_score'] >= 70.0
+#                      and f['direction'] == direction
+#                      and not f['is_mitigated']]
+#   CONDITION: len(qualifying_fvas) > 0
+#   If fails: return None
+#   best_4h_fva = qualifying_fvas[0]
+
+# Step 4: 1H OFL confirms direction
+#   ofl_1h = get_1h_ofl(instrument)
+#   CONDITION: ofl_1h is not None
+#   AND ofl_1h['ofl_probability'] in ['HIGH', 'MEDIUM']
+#   AND ofl_1h['is_active']
+#   AND ofl_1h['direction'] == direction
+#   If fails: return None
+
+# Step 5: 15M OFL active (mandatory)
+#   ofl_15m = get_15m_ofl(instrument)
+#   CONDITION: ofl_15m is not None
+#   AND ofl_15m['ofl_probability'] in ['HIGH', 'MEDIUM']
+#   AND ofl_15m['is_active']
+#   AND ofl_15m['direction'] == direction
+#   If fails: return None
+
+# Step 6: Check 15M MSS (preferred not mandatory)
+#   mss_15m = detect_15m_mss(instrument, direction)
+#   # Not a hard fail — but affects confidence and double_confirm
+
+# Step 7: Double confirmation check
+#   double = check_double_confirmation(ofl_15m, mss_15m)
+#   Log if double_confirm: "BOOM — Double confirmation detected!"
+
+# Step 8: 5M PFVG (hard requirement)
+#   entry_fvg_5m = get_5m_pfvg(instrument, direction)
+#   CONDITION: entry_fvg_5m is not None
+#   If fails: return None
+#   # No 5M PFVG = no entry possible
+
+# Step 9: Get 5M OFL for SL placement
+#   ofl_5m_result = full_order_flow_scan(instrument, '5M')
+#   ofl_5m = ofl_5m_result['most_recent_ofl']
+#   If no 5M OFL: use entry_fvg_5m boundaries for SL
+
+# Step 10: Calculate precise entry and SL
+#   pip_mult = get_pip_multiplier(instrument)
+#   buffer_5m = 1.0 / pip_mult  # tight 1 pip buffer for 5M
+#   If BULLISH:
+#     entry_price = entry_fvg_5m['fvg_low']
+#     If ofl_5m: stop_loss = ofl_5m['swing_point_price'] - buffer_5m
+#     Else: stop_loss = entry_fvg_5m['fvg_low'] - (5.0/pip_mult)
+#   If BEARISH:
+#     entry_price = entry_fvg_5m['fvg_high']
+#     If ofl_5m: stop_loss = ofl_5m['swing_point_price'] + buffer_5m
+#     Else: stop_loss = entry_fvg_5m['fvg_high'] + (5.0/pip_mult)
+#   risk = abs(entry_price - stop_loss)
+#   CONDITION: risk > 0
+#   risk_pips = risk * pip_mult
+
+# Step 11: Calculate ALL TPs
+#   tp1r = entry ± risk * 1.0
+#   tp2r = entry ± risk * 2.0
+#   tp4r = entry ± risk * 4.0
+#   tp5r = entry ± risk * 5.0
+
+# Step 12: Get structural targets
+#   1H context target (first opposing PDA from 1H context)
+#   1h_context = get_4h_context_active(instrument)
+#     → Use 1H version not 4H
+#   structural_tp = 1h_context.target_price if context else None
+
+# Step 13: Calculate confidence score
+#   base_score = 60.0
+#   If daily_ofl HIGH: base_score += 15
+#   If 4h_fva IDEAL: base_score += 10
+#   Elif 4h_fva GOOD: base_score += 5
+#   If 1h_ofl HIGH: base_score += 8
+#   Elif 1h_ofl MEDIUM: base_score += 4
+#   If 15m_ofl HIGH: base_score += 7
+#   If double_confirm: base_score += 20  # BOOM bonus
+#   confidence_score = min(100.0, base_score)
+
+# Step 14: Build complete signal dict
+#   Return {
+#     strategy_id: 'TD-FT-S1',
+#     strategy_name: 'NY Session 5M Flow Trader Double Confirm',
+#     instrument: instrument,
+#     signal_datetime: current_datetime_str,
+#     direction: direction,
+#     entry_price: entry_price,
+#     stop_loss: stop_loss,
+#     take_profit_1r: tp1r,
+#     take_profit_2r: tp2r,
+#     take_profit_4r: tp4r,
+#     take_profit_5r: tp5r,
+#     risk_pips: round(risk_pips, 2),
+#     reward_pips_2r: round(risk_pips * 2, 2),
+#     entry_model: 'DOUBLE_CONFIRM' if double.double_confirm else 'OFL',
+#     fvg_type: 'PFVG',
+#     fvg_high: entry_fvg_5m['fvg_high'],
+#     fvg_low: entry_fvg_5m['fvg_low'],
+#     ofl_probability: 'HIGH',
+#     double_confirm: double.double_confirm,
+#     ofl_present: double.ofl_present,
+#     mss_present: double.mss_present,
+#     in_killzone: True,
+#     in_ny_session: True,
+#     session_time_elapsed_mins: session.time_elapsed_mins,
+#     session_time_remaining_mins: session.time_remaining_mins,
+#     confidence_score: confidence_score,
+#     timeframe_stack: ['DAILY', '4H', '1H', '15M', '5M'],
+#     daily_ofl_probability: 'HIGH',
+#     daily_ofl_direction: direction,
+#     4h_fva_type: best_4h_fva['fva_type'],
+#     4h_fva_probability: best_4h_fva['probability_score'],
+#     1h_ofl_probability: ofl_1h['ofl_probability'],
+#     15m_ofl_probability: ofl_15m['ofl_probability'],
+#     15m_mss_detected: mss_15m['mss_detected'] if mss_15m else False,
+#     structural_target: structural_tp,
+#     priority: 'HIGHEST' if double.double_confirm else 'HIGH'
+#   }
+
+═══════════════════════════════════════
+TD-FT-S2 SCANNER: 4H→1H→15M→5M Flow
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_td_ft_s2(instrument, current_datetime_str=None)
+─────────────────────────────────────
+# Shorter stack than S1 — no daily required
+# Step 0: NY session check (hard)
+# Step 1: Load data (4H, 1H, 15M, 5M)
+# Step 2: 4H context active (FVG or FVA boundary)
+#   ofl_4h HIGH probability required
+# Step 3: 1H OFL direction confirms 4H
+# Step 4: 15M sharp turn OR OFL
+#   Try sharp turn first (higher accuracy)
+#   Fallback to OFL
+# Step 5: 5M PFVG entry
+# Step 6: Double confirm check (15M)
+# Step 7: Build signal (same schema as S1)
+#   strategy_id: 'TD-FT-S2'
+#   timeframe_stack: ['4H', '1H', '15M', '5M']
+
+═══════════════════════════════════════
+TD-FT-S3 SCANNER: Flow MSS Entry
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_td_ft_s3(instrument, current_datetime_str=None)
+─────────────────────────────────────
+# Step 0: NY session (hard)
+# Step 1: 4H direction confirmed (OFL HIGH)
+# Step 2: 1H BSL/SSL swept → MSS on 1H
+#   mss_1h = detect_15m_mss(instrument, direction) but on 1H TF
+#   CONDITION: mss detected with continuation FVG
+# Step 3: 15M confirms with OFL
+#   15M OFL in same direction as 1H MSS
+# Step 4: 5M PFVG entry
+# Step 5: Build signal
+#   mss_1h_confirmed: True
+#   entry_model: 'MSS_FVG'
+#   strategy_id: 'TD-FT-S3'
+
+═══════════════════════════════════════
+TD-FT-S4 SCANNER: Candle Science Flow
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_td_ft_s4(instrument, current_datetime_str=None)
+─────────────────────────────────────
+# Step 0: NY session (hard)
+# Step 1: Weekly respect or disrespect candle (CS signal)
+#   weekly_cs = get_weekly_candle_science(instrument)
+#   CONDITION: clear signal with >= 65 confidence
+# Step 2: Daily OFL confirms weekly CS direction
+# Step 3: 4H context area active
+# Step 4: 1H/15M entry OFL
+# Step 5: 5M PFVG entry
+# Step 6: Build signal
+#   weekly_cs_direction: weekly_cs.direction
+#   strategy_id: 'TD-FT-S4'
+#   timeframe_stack: ['WEEKLY', 'DAILY', '4H', '1H', '15M', '5M']
+
+═══════════════════════════════════════
+MASTER FLOW TRADER SCANNER
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_all_flow_strategies(instrument, current_datetime_str=None)
+─────────────────────────────────────
+# Runs all 4 flow trader scanners
+# Prioritizes TD-FT-S1 as PRIMARY
+# Sorts by confidence_score with double_confirm=True first
+# Returns same result schema
+# Save to: backtest/results/flow_signals_{instrument}.json
+
+─────────────────────────────────────
+Function: get_best_ny_session_signal(instrument, current_datetime_str)
+─────────────────────────────────────
+# Returns single best signal for current NY session
+# Priority: double_confirm=True > single confirm
+# Within same type: highest confidence wins
+# If outside session: return {in_session: False, signal: None}
+
+Routes in routes/flow_trader_routes.py:
+  GET /api/strategies/flow/scan
+    Query: instrument, datetime
+    Returns: all flow signals
+  GET /api/strategies/flow/best
+    Query: instrument, datetime
+    Returns: best single signal for this session
+  GET /api/strategies/flow/scan/<strategy_id>
+    Returns: specific flow strategy signal
+  GET /api/strategies/flow/session-status
+    Query: datetime
+    Returns: {in_session, elapsed_mins, remaining_mins}
+
+Register in app.py.
+Add this to codebase without any errors.
+Keep ALL existing code intact.
+```
+
+---
+
+## PROMPT-ICT: ICT 2022 Strategies
+
+```
+You are building the MMC Trading Backtest Software.
+All previous prompts implemented.
+Now implement ICT 2022 Strategy Scanners ICT-S1 and ICT-S2
+plus the universal double confirmation detector.
+
+═══════════════════════════════════════
+PART A — CREATE strategies/ict_2022/ict_strategies.py
+═══════════════════════════════════════
+
+Imports:
+  [All standard imports]
+  from strategies.top_down.flow_trader import (
+      is_ny_session,
+      check_double_confirmation,
+      detect_15m_mss
+  )
+  from strategies.individual.daily_strategies import (
+      get_no_opposing_pda_blocking
+  )
+
+ICT_STRATEGY_IDS = ['ICT-S1', 'ICT-S2']
+
+CONFIGURABLE_TF_PAIRS = {
+    'DAILY':  'daily_to_4h',
+    '4H':     '4h_to_1h',
+    '1H':     '1h_to_15m',
+    '15M':    '15m_to_5m',
+    '5M':     '5m_to_1m'
+}
+
+═══════════════════════════════════════
+SHARED ICT UTILITIES
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: detect_mss_on_tf(instrument, timeframe, direction)
+─────────────────────────────────────
+# Generic MSS detector for any timeframe
+# Returns: dict {mss_detected, fvg, swept_level, probability}
+# Steps:
+#   sweep_result = full_sweep_scan(instrument, timeframe)
+#   qualifying = [s for s in sweep_result['all_sweeps']
+#                 if s['liquidity_event'] == 'SWEEP'
+#                 and s['sweep_direction'] == direction]
+#   If no qualifying: return {mss_detected: False}
+#   best = qualifying[0]
+#   mss = detect_order_flow_sweep for best sweep candle
+#   Return {
+#     mss_detected: mss.is_ofl_sweep,
+#     fvg: mss.continuation_fvg,
+#     swept_level: best.swept_level,
+#     probability: best.probability_score
+#   }
+
+─────────────────────────────────────
+Function: get_higher_tf(entry_tf)
+─────────────────────────────────────
+# Returns the TF one level above in hierarchy
+# TIMEFRAME_HIERARCHY = ['MONTHLY','WEEKLY','DAILY','4H','1H','15M','5M','1M']
+# idx = TIMEFRAME_HIERARCHY.index(entry_tf)
+# If idx == 0: raise ValueError("No higher TF above MONTHLY")
+# Return TIMEFRAME_HIERARCHY[idx - 1]
+
+─────────────────────────────────────
+Function: load_tf_pair(instrument, higher_tf, entry_tf)
+─────────────────────────────────────
+# Load two TFs for ICT configurable strategy
+# Validates min candles per TF
+# Returns: dict {higher_tf: df, entry_tf: df}
+
+─────────────────────────────────────
+Function: check_mss_not_invalidated(swept_level, sweep_direction, current_price)
+─────────────────────────────────────
+# Returns: bool — True if MSS still valid
+# BULLISH MSS (swept SSL): price must not have closed back below swept_level
+# BEARISH MSS (swept BSL): price must not have closed back above swept_level
+# If BULLISH: return current_price > swept_level
+# If BEARISH: return current_price < swept_level
+
+─────────────────────────────────────
+Function: get_structural_target_after_mss(swept_level, direction, df, instrument)
+─────────────────────────────────────
+# Returns nearest opposing PDA after MSS as target
+# Same logic as find_first_opposing_pda but from swept_level
+# If BULLISH: nearest SWING_HIGH or BEARISH FVG above swept_level
+# If BEARISH: nearest SWING_LOW or BULLISH FVG below swept_level
+
+═══════════════════════════════════════
+ICT-S1 SCANNER: MSS + FVG Universal
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_ict_s1(instrument, entry_tf='1H', current_datetime_str=None)
+─────────────────────────────────────
+# Configurable for any TF — tested on D1, 4H, 1H
+# Default entry_tf = '1H' (most commonly used)
+
+# Step 1: Get higher TF
+#   higher_tf = get_higher_tf(entry_tf)
+
+# Step 2: Load data
+#   data = load_tf_pair(instrument, higher_tf, entry_tf)
+#   df_higher = data[higher_tf]
+#   df_entry  = data[entry_tf]
+
+# Step 3: Higher TF OFL alignment (MEDIUM or HIGH)
+#   ofl_higher = full_order_flow_scan(instrument, higher_tf)
+#   CONDITION: ofl_higher most_recent_ofl is not None
+#   AND ofl_higher['ofl_probability'] in ['HIGH', 'MEDIUM']
+#   AND is_active
+#   If fails: return None
+#   higher_direction = ofl_higher['most_recent_ofl']['direction']
+
+# Step 4: Detect MSS on entry TF
+#   mss = detect_mss_on_tf(instrument, entry_tf, higher_direction)
+#   CONDITION: mss.mss_detected == True
+#   If fails: return None
+#   direction = higher_direction  # MSS in same direction as higher TF
+
+# Step 5: Verify MSS FVG quality
+#   mss_fvg = mss.fvg
+#   CONDITION: mss_fvg is not None
+#   AND mss_fvg['fvg_type'] in ['PFVG', 'BFVG']
+#   AND not mss_fvg['is_mitigated']
+#   If RFVG: return None (RFVG not allowed)
+
+# Step 6: Verify MSS not invalidated
+#   current_price = df_entry.iloc[-1]['close']
+#   valid = check_mss_not_invalidated(mss.swept_level, direction, current_price)
+#   CONDITION: valid == True
+#   If fails: return None
+
+# Step 7: Calculate entry from MSS FVG
+#   pip_mult = get_pip_multiplier(instrument)
+#   buffer = 2.0 / pip_mult
+#   If BULLISH:
+#     entry_price = mss_fvg['fvg_low']
+#     stop_loss = mss.swept_level - buffer  # below swept SSL
+#   If BEARISH:
+#     entry_price = mss_fvg['fvg_high']
+#     stop_loss = mss.swept_level + buffer  # above swept BSL
+#   risk = abs(entry_price - stop_loss)
+#   CONDITION: risk > 0
+#   risk_pips = risk * pip_mult
+
+# Step 8: Get structural target
+#   target = get_structural_target_after_mss(
+#     mss.swept_level, direction, df_entry, instrument)
+
+# Step 9: Calculate all TPs
+#   Standard tp1r, tp2r, tp4r, tp5r
+
+# Step 10: Confidence score
+#   base = 65.0
+#   If higher_tf ofl HIGH: base += 15
+#   If mss_fvg PFVG: base += 15
+#   Elif mss_fvg BFVG: base += 8
+#   If mss.probability >= 70: base += 10
+#   confidence = min(100.0, base)
+
+# Step 11: Build signal
+#   Return {
+#     strategy_id: 'ICT-S1',
+#     strategy_name: f'ICT 2022 MSS+FVG on {entry_tf}',
+#     instrument, direction,
+#     entry_tf: entry_tf,
+#     higher_tf: higher_tf,
+#     entry_price, stop_loss,
+#     take_profit_1r: tp1r,
+#     take_profit_2r: tp2r,
+#     take_profit_4r: tp4r,
+#     take_profit_5r: tp5r,
+#     risk_pips: round(risk_pips, 2),
+#     entry_model: 'MSS_FVG',
+#     fvg_type: mss_fvg['fvg_type'],
+#     fvg_high: mss_fvg['fvg_high'],
+#     fvg_low: mss_fvg['fvg_low'],
+#     swept_level: mss.swept_level,
+#     mss_probability: mss.probability,
+#     higher_tf_ofl_probability: ofl_higher probability,
+#     double_confirm: False,
+#     confidence_score: confidence,
+#     structural_target: target,
+#     timeframe_stack: [higher_tf, entry_tf],
+#     in_killzone: False  # determined externally
+#   }
+
+─────────────────────────────────────
+Function: scan_ict_s1_all_tfs(instrument, current_datetime_str=None)
+─────────────────────────────────────
+# Run ICT-S1 on D1, 4H, and 1H entry TFs
+# Collect all signals, return best
+# signals = []
+# For each tf in ['DAILY', '4H', '1H']:
+#   try:
+#     sig = scan_ict_s1(instrument, entry_tf=tf)
+#     if sig: signals.append(sig)
+#   except: continue
+# Sort by confidence_score desc
+# Return signals
+
+═══════════════════════════════════════
+ICT-S2 SCANNER: OFL + MSS Confluence
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_ict_s2(instrument, higher_tf='DAILY', entry_tf='4H', current_datetime_str=None)
+─────────────────────────────────────
+# HIGHEST ACCURACY ICT SETUP
+# Both OFL and MSS must be present = double confirmation
+
+# Step 1: Load data
+#   data = load_tf_pair(instrument, higher_tf, entry_tf)
+
+# Step 2: Higher TF OFL must be HIGH probability with FVG as FLOD
+#   ofl_higher = full_order_flow_scan(instrument, higher_tf)
+#   CONDITION: ofl HIGH probability
+#   AND ofl.flod_type == 'FVG_IS_FLOD'
+#   AND is_active
+#   If fails: return None  # not high enough quality
+#   direction = ofl_higher direction
+
+# Step 3: Detect MSS on entry TF at FLOD or ODD level
+#   Get FLOD price from higher TF OFL
+#   flod_high = ofl_higher_most_recent.fvg_high
+#   flod_low  = ofl_higher_most_recent.fvg_low
+#   # MSS should occur near the FLOD/ODD zone
+#   mss = detect_mss_on_tf(instrument, entry_tf, direction)
+#   CONDITION: mss.mss_detected == True
+#   Check if MSS swept_level is near FLOD zone:
+#     tolerance = (flod_high - flod_low) * 2  # 2x FVG size tolerance
+#     near_flod = abs(mss.swept_level - flod_low) <= tolerance (BULLISH)
+#              OR abs(mss.swept_level - flod_high) <= tolerance (BEARISH)
+#   If not near FLOD/ODD: lower confidence but don't reject
+
+# Step 4: Verify post-MSS FVG is PFVG only
+#   CONDITION: mss.fvg.fvg_type == 'PFVG'
+#   This is stricter than ICT-S1 — BFVG not accepted here
+
+# Step 5: Verify MSS not invalidated
+
+# Step 6: Double confirmation assessment
+#   ofl_present = True (confirmed in step 2)
+#   mss_present = True (confirmed in step 3)
+#   double_confirm_result = {
+#     double_confirm: True,
+#     ofl_present: True,
+#     mss_present: True,
+#     bonus: 20.0
+#   }
+
+# Step 7: Calculate entry from MSS PFVG (tighter than S1)
+#   buffer = 1.5 / pip_mult  # tighter buffer for confluence entry
+#   SL at LOD of higher TF OFL (strongest SL placement)
+#   ofl_lod = ofl_higher.lod_price
+#   If BULLISH: stop_loss = ofl_lod - (1.5/pip_mult)
+#   If BEARISH: stop_loss = ofl_lod + (1.5/pip_mult)
+#   This uses the OFL LOD as SL — most precise placement
+
+# Step 8: Confidence score
+#   base = 70.0 (starts higher because both OFL and MSS required)
+#   base += 20.0 (double confirm bonus always)
+#   If PFVG: base += 10
+#   If higher_tf ofl HIGH: base += 10
+#   If near_flod: base += 5
+#   confidence = min(100.0, base)
+
+# Step 9: Build signal
+#   Return {
+#     strategy_id: 'ICT-S2',
+#     strategy_name: 'OFL + MSS Double Confirmation',
+#     instrument, direction,
+#     entry_tf, higher_tf,
+#     entry_price, stop_loss,
+#     take_profit_1r, take_profit_2r,
+#     take_profit_4r, take_profit_5r,
+#     risk_pips,
+#     entry_model: 'DOUBLE_CONFIRM',
+#     fvg_type: 'PFVG',
+#     mss_at_flod: near_flod,
+#     double_confirm: True,
+#     ofl_lod_used_as_sl: True,
+#     confidence_score: confidence,
+#     priority: 'HIGHEST'  # always highest priority
+#   }
+
+─────────────────────────────────────
+Function: scan_ict_s2_all_combinations(instrument, current_datetime_str=None)
+─────────────────────────────────────
+# Test all TF combinations for ICT-S2
+# combinations = [
+#   ('DAILY', '4H'),
+#   ('4H', '1H'),
+#   ('1H', '15M'),
+#   ('DAILY', '1H')   # skip TF version
+# ]
+# For each (htf, etf):
+#   try: scan_ict_s2(instrument, htf, etf)
+#   except: continue
+# Return all signals sorted by confidence
+
+═══════════════════════════════════════
+MASTER ICT SCANNER
+═══════════════════════════════════════
+
+─────────────────────────────────────
+Function: scan_all_ict_strategies(instrument, current_datetime_str=None)
+─────────────────────────────────────
+# Combines ICT-S1 (all TFs) + ICT-S2 (all combos)
+# Returns:
+#   {
+#     instrument,
+#     scan_datetime,
+#     signals_found: int,
+#     ict_s1_signals: list,
+#     ict_s2_signals: list,
+#     all_signals: combined sorted list,
+#     best_signal: highest confidence
+#   }
+# Double confirm signals (ICT-S2) always listed first
+# Save to: backtest/results/ict_signals_{instrument}.json
+
+═══════════════════════════════════════
+ROUTES
+═══════════════════════════════════════
+
+Create routes/ict_strategy_routes.py
+Blueprint: ict_strategies_bp
+
+GET /api/strategies/ict/scan
+  Query: instrument, entry_tf (optional), datetime (optional)
+  Returns: all ICT signals
+
+GET /api/strategies/ict/s1
+  Query: instrument, entry_tf (default 1H)
+  Returns: ICT-S1 signal
+
+GET /api/strategies/ict/s2
+  Query: instrument, higher_tf (default DAILY), entry_tf (default 4H)
+  Returns: ICT-S2 double confirm signal
+
+GET /api/strategies/ict/double-confirm
+  Query: instrument, datetime
+  Calls: scan_ict_s2_all_combinations
+  Returns: all double confirm opportunities
+
+Register in app.py.
+Add this to codebase without any errors.
+Keep ALL existing code intact.
+```
+
+---
+
+All 6 prompts generated at full detail. Paste in this order:
+
+```
+PROMPT-F2   → Strategy Scanner Base
+PROMPT-D1   → Daily Strategies
+PROMPT-4H   → 4H Strategies
+PROMPT-1H   → 1H Strategies
+PROMPT-TD1  → Filtering Process
+PROMPT-TD2  → Flow Trader NY 5M
+PROMPT-ICT  → ICT 2022 Strategies
+```
+
+Ready for the next 6 (BE1, BE2, BE3, VIZ1, VIZ2, and Colab notebooks)?
