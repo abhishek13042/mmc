@@ -1,0 +1,109 @@
+{
+  "strategy": "ORDER_FLOW_ENTRY",
+  "version": "1.0",
+  "parameters": {
+    "min_checklist_pass": 4,
+    "fvg_types_allowed": [
+      "PFVG",
+      "BFVG",
+      "RFVG"
+    ],
+    "min_rr": 2.0
+  },
+  "relaxation_options": {
+    "min_checklist_pass": 5,
+    "allow_all_fvgs": [
+      "PFVG",
+      "BFVG",
+      "RFVG"
+    ]
+  },
+  "history": [
+    {
+      "date": "2026-04-22 18:07:46",
+      "previous": {
+        "min_checklist_pass": 8,
+        "fvg_types_allowed": [
+          "PFVG"
+        ],
+        "min_rr": 2.0
+      },
+      "new": {
+        "min_checklist_pass": 4,
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG",
+          "RFVG"
+        ],
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    },
+    {
+      "date": "2026-04-22 18:30:19",
+      "previous": {
+        "min_checklist_pass": 4,
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG",
+          "RFVG"
+        ],
+        "min_rr": 2.0
+      },
+      "new": {
+        "min_checklist_pass": 4,
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG",
+          "RFVG"
+        ],
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    },
+    {
+      "date": "2026-04-22 18:37:28",
+      "previous": {
+        "min_checklist_pass": 4,
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG",
+          "RFVG"
+        ],
+        "min_rr": 2.0
+      },
+      "new": {
+        "min_checklist_pass": 4,
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG",
+          "RFVG"
+        ],
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    },
+    {
+      "date": "2026-04-22 18:49:45",
+      "previous": {
+        "min_checklist_pass": 4,
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG",
+          "RFVG"
+        ],
+        "min_rr": 2.0
+      },
+      "new": {
+        "min_checklist_pass": 4,
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG",
+          "RFVG"
+        ],
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    }
+  ]
+}

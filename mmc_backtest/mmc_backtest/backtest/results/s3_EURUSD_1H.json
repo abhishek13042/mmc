@@ -1,0 +1,16 @@
+{
+    "instrument": "EURUSD",
+    "timeframe": "1H",
+    "total_trades": 0,
+    "trades": [],
+    "stats": {
+        "total_signals": 0,
+        "wins": 0,
+        "losses": 0,
+        "neutrals": 0,
+        "win_rate_pct": 0,
+        "total_rr": 0,
+        "avg_rr": 0
+    },
+    "note": "Good FVA has 2 probability arrays. Expected lower WR than Ideal (3 arrays)."
+}

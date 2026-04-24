@@ -1,0 +1,140 @@
+{
+  "strategy": "CANDLE_SCIENCE",
+  "version": "1.0",
+  "parameters": {
+    "min_confidence_score": 40,
+    "fvg_types_allowed": [
+      "PFVG",
+      "BFVG"
+    ],
+    "min_rr": 2.0
+  },
+  "relaxation_options": {
+    "lower_confidence": 40,
+    "allow_all_fvgs": [
+      "PFVG",
+      "BFVG"
+    ]
+  },
+  "history": [
+    {
+      "date": "2026-04-22 18:07:43",
+      "previous": {
+        "min_confidence_score": 60,
+        "fvg_types_allowed": [
+          "PFVG"
+        ],
+        "min_rr": 2.0
+      },
+      "new": {
+        "min_confidence_score": 40,
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG"
+        ],
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    },
+    {
+      "date": "2026-04-22 18:13:13",
+      "previous": {
+        "min_confidence_score": 40,
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG"
+        ],
+        "min_rr": 2.0
+      },
+      "new": {
+        "min_confidence_score": 40,
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG"
+        ],
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    },
+    {
+      "date": "2026-04-22 18:20:01",
+      "previous": {
+        "min_confidence_score": 40,
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG"
+        ],
+        "min_rr": 2.0
+      },
+      "new": {
+        "min_confidence_score": 40,
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG"
+        ],
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    },
+    {
+      "date": "2026-04-22 18:24:16",
+      "previous": {
+        "min_confidence_score": 40,
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG"
+        ],
+        "min_rr": 2.0
+      },
+      "new": {
+        "min_confidence_score": 40,
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG"
+        ],
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    },
+    {
+      "date": "2026-04-22 18:26:46",
+      "previous": {
+        "min_confidence_score": 40,
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG"
+        ],
+        "min_rr": 2.0
+      },
+      "new": {
+        "min_confidence_score": 40,
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG"
+        ],
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    },
+    {
+      "date": "2026-04-22 18:31:18",
+      "previous": {
+        "min_confidence_score": 40,
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG"
+        ],
+        "min_rr": 2.0
+      },
+      "new": {
+        "min_confidence_score": 40,
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG"
+        ],
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    }
+  ]
+}

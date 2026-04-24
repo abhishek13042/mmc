@@ -1,0 +1,1 @@
+# MMC Strategy initialization

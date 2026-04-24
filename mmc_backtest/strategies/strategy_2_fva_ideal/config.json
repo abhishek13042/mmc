@@ -1,0 +1,140 @@
+{
+  "strategy": "FVA_IDEAL",
+  "version": "1.0",
+  "parameters": {
+    "fva_types_allowed": [
+      "IDEAL",
+      "GOOD"
+    ],
+    "check_ofl_confluence": false,
+    "min_rr": 2.0
+  },
+  "relaxation_options": {
+    "allow_good_fva": [
+      "IDEAL",
+      "GOOD"
+    ],
+    "disable_ofl_confluence": false
+  },
+  "history": [
+    {
+      "date": "2026-04-22 18:07:40",
+      "previous": {
+        "fva_types_allowed": [
+          "IDEAL"
+        ],
+        "check_ofl_confluence": true,
+        "min_rr": 2.0
+      },
+      "new": {
+        "fva_types_allowed": [
+          "IDEAL",
+          "GOOD"
+        ],
+        "check_ofl_confluence": false,
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    },
+    {
+      "date": "2026-04-22 18:13:09",
+      "previous": {
+        "fva_types_allowed": [
+          "IDEAL",
+          "GOOD"
+        ],
+        "check_ofl_confluence": false,
+        "min_rr": 2.0
+      },
+      "new": {
+        "fva_types_allowed": [
+          "IDEAL",
+          "GOOD"
+        ],
+        "check_ofl_confluence": false,
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    },
+    {
+      "date": "2026-04-22 18:19:58",
+      "previous": {
+        "fva_types_allowed": [
+          "IDEAL",
+          "GOOD"
+        ],
+        "check_ofl_confluence": false,
+        "min_rr": 2.0
+      },
+      "new": {
+        "fva_types_allowed": [
+          "IDEAL",
+          "GOOD"
+        ],
+        "check_ofl_confluence": false,
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    },
+    {
+      "date": "2026-04-22 18:22:46",
+      "previous": {
+        "fva_types_allowed": [
+          "IDEAL",
+          "GOOD"
+        ],
+        "check_ofl_confluence": false,
+        "min_rr": 2.0
+      },
+      "new": {
+        "fva_types_allowed": [
+          "IDEAL",
+          "GOOD"
+        ],
+        "check_ofl_confluence": false,
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    },
+    {
+      "date": "2026-04-22 18:25:28",
+      "previous": {
+        "fva_types_allowed": [
+          "IDEAL",
+          "GOOD"
+        ],
+        "check_ofl_confluence": false,
+        "min_rr": 2.0
+      },
+      "new": {
+        "fva_types_allowed": [
+          "IDEAL",
+          "GOOD"
+        ],
+        "check_ofl_confluence": false,
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    },
+    {
+      "date": "2026-04-22 18:29:09",
+      "previous": {
+        "fva_types_allowed": [
+          "IDEAL",
+          "GOOD"
+        ],
+        "check_ofl_confluence": false,
+        "min_rr": 2.0
+      },
+      "new": {
+        "fva_types_allowed": [
+          "IDEAL",
+          "GOOD"
+        ],
+        "check_ofl_confluence": false,
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    }
+  ]
+}

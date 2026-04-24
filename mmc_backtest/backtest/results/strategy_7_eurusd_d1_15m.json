@@ -1,0 +1,14 @@
+{
+  "instrument": "EURUSD",
+  "ctx_tf": "DAILY",
+  "ent_tf": "15M",
+  "total_signals": 0,
+  "trades": [],
+  "stats": {
+    "total_signals": 0,
+    "wins": 0,
+    "losses": 0,
+    "win_rate_pct": 0,
+    "total_rr": 0
+  }
+}

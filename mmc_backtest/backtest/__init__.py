@@ -1,0 +1,1 @@
+# MMC Backtest Engine initialization

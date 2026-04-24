@@ -1,0 +1,152 @@
+{
+  "strategy": "SHARP_TURN",
+  "version": "1.0",
+  "parameters": {
+    "fvg_types_allowed": [
+      "PFVG",
+      "BFVG",
+      "RFVG"
+    ],
+    "max_reversal_candles": 5,
+    "min_rr": 2.0
+  },
+  "relaxation_options": {
+    "allow_all_fvgs": [
+      "PFVG",
+      "BFVG"
+    ],
+    "increase_reversal_window": 5
+  },
+  "history": [
+    {
+      "date": "2026-04-22 18:07:44",
+      "previous": {
+        "fvg_types_allowed": [
+          "PFVG"
+        ],
+        "max_reversal_candles": 3,
+        "min_rr": 2.0
+      },
+      "new": {
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG",
+          "RFVG"
+        ],
+        "max_reversal_candles": 5,
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    },
+    {
+      "date": "2026-04-22 18:13:15",
+      "previous": {
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG",
+          "RFVG"
+        ],
+        "max_reversal_candles": 5,
+        "min_rr": 2.0
+      },
+      "new": {
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG",
+          "RFVG"
+        ],
+        "max_reversal_candles": 5,
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    },
+    {
+      "date": "2026-04-22 18:20:02",
+      "previous": {
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG",
+          "RFVG"
+        ],
+        "max_reversal_candles": 5,
+        "min_rr": 2.0
+      },
+      "new": {
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG",
+          "RFVG"
+        ],
+        "max_reversal_candles": 5,
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    },
+    {
+      "date": "2026-04-22 18:24:18",
+      "previous": {
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG",
+          "RFVG"
+        ],
+        "max_reversal_candles": 5,
+        "min_rr": 2.0
+      },
+      "new": {
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG",
+          "RFVG"
+        ],
+        "max_reversal_candles": 5,
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    },
+    {
+      "date": "2026-04-22 18:26:49",
+      "previous": {
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG",
+          "RFVG"
+        ],
+        "max_reversal_candles": 5,
+        "min_rr": 2.0
+      },
+      "new": {
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG",
+          "RFVG"
+        ],
+        "max_reversal_candles": 5,
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    },
+    {
+      "date": "2026-04-22 18:40:31",
+      "previous": {
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG",
+          "RFVG"
+        ],
+        "max_reversal_candles": 5,
+        "min_rr": 2.0
+      },
+      "new": {
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG",
+          "RFVG"
+        ],
+        "max_reversal_candles": 5,
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    }
+  ]
+}

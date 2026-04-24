@@ -1,0 +1,140 @@
+{
+  "strategy": "LIQUIDITY_SWEEP",
+  "version": "1.0",
+  "parameters": {
+    "sweep_types_allowed": [
+      "SWEEP",
+      "RUN"
+    ],
+    "min_wick_ratio": 0.3,
+    "min_rr": 2.0
+  },
+  "relaxation_options": {
+    "allow_run_rejection": [
+      "SWEEP",
+      "RUN"
+    ],
+    "lower_wick_ratio": 0.3
+  },
+  "history": [
+    {
+      "date": "2026-04-22 18:07:42",
+      "previous": {
+        "sweep_types_allowed": [
+          "SWEEP"
+        ],
+        "min_wick_ratio": 0.5,
+        "min_rr": 2.0
+      },
+      "new": {
+        "sweep_types_allowed": [
+          "SWEEP",
+          "RUN"
+        ],
+        "min_wick_ratio": 0.3,
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    },
+    {
+      "date": "2026-04-22 18:13:11",
+      "previous": {
+        "sweep_types_allowed": [
+          "SWEEP",
+          "RUN"
+        ],
+        "min_wick_ratio": 0.3,
+        "min_rr": 2.0
+      },
+      "new": {
+        "sweep_types_allowed": [
+          "SWEEP",
+          "RUN"
+        ],
+        "min_wick_ratio": 0.3,
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    },
+    {
+      "date": "2026-04-22 18:20:00",
+      "previous": {
+        "sweep_types_allowed": [
+          "SWEEP",
+          "RUN"
+        ],
+        "min_wick_ratio": 0.3,
+        "min_rr": 2.0
+      },
+      "new": {
+        "sweep_types_allowed": [
+          "SWEEP",
+          "RUN"
+        ],
+        "min_wick_ratio": 0.3,
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    },
+    {
+      "date": "2026-04-22 18:22:47",
+      "previous": {
+        "sweep_types_allowed": [
+          "SWEEP",
+          "RUN"
+        ],
+        "min_wick_ratio": 0.3,
+        "min_rr": 2.0
+      },
+      "new": {
+        "sweep_types_allowed": [
+          "SWEEP",
+          "RUN"
+        ],
+        "min_wick_ratio": 0.3,
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    },
+    {
+      "date": "2026-04-22 18:25:30",
+      "previous": {
+        "sweep_types_allowed": [
+          "SWEEP",
+          "RUN"
+        ],
+        "min_wick_ratio": 0.3,
+        "min_rr": 2.0
+      },
+      "new": {
+        "sweep_types_allowed": [
+          "SWEEP",
+          "RUN"
+        ],
+        "min_wick_ratio": 0.3,
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    },
+    {
+      "date": "2026-04-22 18:30:03",
+      "previous": {
+        "sweep_types_allowed": [
+          "SWEEP",
+          "RUN"
+        ],
+        "min_wick_ratio": 0.3,
+        "min_rr": 2.0
+      },
+      "new": {
+        "sweep_types_allowed": [
+          "SWEEP",
+          "RUN"
+        ],
+        "min_wick_ratio": 0.3,
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    }
+  ]
+}

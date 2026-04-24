@@ -1,0 +1,182 @@
+// ============================================================================================================================
+// MMC Strategy 1 — Institutional OFL Continuation Engine (v7.0 — Forensic Logic Sync)
+// Author   : MMC Institutional Research
+// Logic    : 100% Synced with Python Backtestv2 (50% Win Rate Engine)
+// ============================================================================================================================
+
+//@version=6
+indicator("MMC S1 — OFL Engine (v7.0)", overlay=true, max_bars_back=1000, max_lines_count=200, max_boxes_count=200, max_labels_count=100)
+
+// ─────────────────────────────────────────────
+// SECTION 1: CORE INPUTS
+// ─────────────────────────────────────────────
+grp_htf    = "═══ Institutional Bias ═══"
+htf_type   = input.string("240", "HTF Timeframe", options=["60","240","1D","1W"], group=grp_htf)
+
+grp_flt    = "═══ Forensic Filters ═══"
+eq_filter  = input.bool(true,  "Discount/Premium EQ Filter",  group=grp_flt)
+rr_min     = input.float(2.0,  "Min RR to Target",            group=grp_flt, step=0.5)
+conf_min   = input.int(60,     "Min Confidence Score",        group=grp_flt, minval=0, maxval=100)
+swing_len  = input.int(3,      "Structure Lookback",          group=grp_flt, minval=1, maxval=10)
+
+grp_vis    = "═══ Professional Visuals ═══"
+show_ofl   = input.bool(true,  "Show OFL Active Zones",       group=grp_vis)
+show_eq    = input.bool(true,  "Show Range Equilibrium",      group=grp_vis)
+show_htf   = input.bool(true,  "Show HTF Target Line",        group=grp_vis)
+show_pos   = input.bool(true,  "Show Position Tool Visuals",  group=grp_vis)
+bull_col   = input.color(color.new(#00E5FF, 0),  "Bullish Color", group=grp_vis)
+bear_col   = input.color(color.new(#FF1744, 0),  "Bearish Color", group=grp_vis)
+htf_col    = input.color(color.new(#7C4DFF, 0),  "HTF Target Color", group=grp_vis)
+eq_col     = input.color(color.new(#FFD600, 60), "EQ Line Color", group=grp_vis)
+
+// ─────────────────────────────────────────────
+// SECTION 2: HTF BIAS ENGINE
+// ─────────────────────────────────────────────
+htf_h = request.security(syminfo.tickerid, htf_type, high, lookahead=barmerge.lookahead_off)
+htf_l = request.security(syminfo.tickerid, htf_type, low,  lookahead=barmerge.lookahead_off)
+
+var float htf_ith     = na
+var float htf_itl     = na
+var int   swH_bar     = 0
+var int   swL_bar     = 0
+
+htf_pH = ta.pivothigh(htf_h, swing_len, swing_len)
+htf_pL = ta.pivotlow(htf_l,  swing_len, swing_len)
+
+if not na(htf_pH)
+    htf_ith := htf_pH
+    swH_bar  := bar_index
+if not na(htf_pL)
+    htf_itl := htf_pL
+    swL_bar  := bar_index
+
+// Institutional Bias: True direction of the most recent HTF Pivot
+htf_bias = swL_bar >= swH_bar ? 1 : -1
+
+// ─────────────────────────────────────────────
+// SECTION 3: LTF STRUCTURE (Intermediate Term)
+// ─────────────────────────────────────────────
+var float ltf_ith = na
+var float ltf_itl = na
+var int   ltf_ith_bar = 0
+var int   ltf_itl_bar = 0
+
+ltf_pH = ta.pivothigh(high, swing_len, swing_len)
+ltf_pL = ta.pivotlow(low,   swing_len, swing_len)
+
+if not na(ltf_pH)
+    ltf_ith := ltf_pH
+    ltf_ith_bar := bar_index - swing_len
+if not na(ltf_pL)
+    ltf_itl := ltf_pL
+    ltf_itl_bar := bar_index - swing_len
+
+ltf_eq = not na(ltf_ith) and not na(ltf_itl) ? (ltf_ith + ltf_itl) / 2.0 : na
+
+// ─────────────────────────────────────────────
+// SECTION 4: OFL & FVG DETECTION
+// ─────────────────────────────────────────────
+bull_fvg = low  > high[2]
+bear_fvg = high < low[2]
+
+// OFL Logic: FVG formed immediately after IT point (within 8 bars)
+bullish_ofl = bull_fvg and (bar_index - ltf_itl_bar) <= 8 and not na(ltf_itl)
+bearish_ofl = bear_fvg and (bar_index - ltf_ith_bar) <= 8 and not na(ltf_ith)
+
+// Entry Levels (Institutional)
+bull_entry = bullish_ofl ? high[2] : na
+bear_entry = bearish_ofl ? low[2]  : na
+
+// Structural SL (2 pip buffer as per Forensic Engine)
+pip_sz = syminfo.mintick * (syminfo.type == "forex" ? 10.0 : 1.0)
+sl_buf = pip_sz * 2.0
+
+bull_sl = bullish_ofl ? ltf_itl - sl_buf : na
+bear_sl = bearish_ofl ? ltf_ith + sl_buf : na
+
+// Targets: Targeting HTF Liquidity (The Draw on Liquidity)
+target_bull = not na(htf_ith) ? htf_ith : high * 1.01
+target_bear = not na(htf_itl) ? htf_itl : low  * 0.99
+
+// ─────────────────────────────────────────────
+// SECTION 5: AI-INSPIRED CONFIDENCE SCORE
+// Weights matched to SimpleInstitutionalFilter (Python)
+// ─────────────────────────────────────────────
+atr14 = ta.atr(14)
+f_score(is_bull, entry_p, sl_p, tp_p) =>
+    s = 0
+    // 1. HTF Bias Alignment (35 pts)
+    if (is_bull and htf_bias == 1) or (not is_bull and htf_bias == -1)
+        s += 35
+    else
+        s += 5
+    // 2. Depth in EQ (25 pts)
+    rng = not na(ltf_ith) and not na(ltf_itl) ? math.max(ltf_ith - ltf_itl, 1e-10) : math.max(atr14 * 4.0, 1e-10)
+    d = not na(ltf_eq) ? math.abs(entry_p - ltf_eq) / rng : 0.0
+    s += int(math.min(d * 50.0, 25.0)) // Max 25 pts for deep discount/premium
+    // 3. RR Quality (20 pts)
+    rr_val = (not na(entry_p) and not na(sl_p) and not na(tp_p)) ? math.abs(tp_p - entry_p) / math.max(math.abs(entry_p - sl_p), 1e-10) : 0.0
+    s += rr_val >= 4.0 ? 20 : rr_val >= 3.0 ? 15 : rr_val >= 2.0 ? 10 : 0
+    // 4. Momentum Alignment (20 pts)
+    bc = 0
+    for k = 1 to 10
+        if close[k] > open[k]
+            bc += 1
+    s += is_bull ? bc * 2 : (10 - bc) * 2
+    math.min(s, 100)
+
+bull_sc = bullish_ofl ? f_score(true,  bull_entry, bull_sl, target_bull) : 0
+bear_sc = bearish_ofl ? f_score(false, bear_entry, bear_sl, target_bear) : 0
+
+// ─────────────────────────────────────────────
+// SECTION 6: FINAL SIGNALS
+// ─────────────────────────────────────────────
+sig_bull = bullish_ofl and htf_bias >= 0 and (eq_filter ? close < ltf_eq : true) and bull_sc >= conf_min
+sig_bear = bearish_ofl and htf_bias <= 0 and (eq_filter ? close > ltf_eq : true) and bear_sc >= conf_min
+
+// ─────────────────────────────────────────────
+// SECTION 7: VISUALS — THE SURGICAL CHART
+// ─────────────────────────────────────────────
+// Background Bias
+bgcolor(htf_bias == 1 ? color.new(bull_col, 98) : color.new(bear_col, 98), title="Bias Background")
+
+// Structure Lines
+plot(show_htf ? (htf_bias == 1 ? htf_ith : htf_itl) : na, "Institutional Target", color=htf_col, linewidth=2)
+plot(show_eq ? ltf_eq : na, "Range Equilibrium (EQ)", color=eq_col, linewidth=1, style=plot.style_stepline)
+
+// Signals
+plotshape(sig_bull, "BUY SIGNAL",  location=location.belowbar, style=shape.triangleup,   color=bull_col, size=size.normal, text="OFL▲")
+plotshape(sig_bear, "SELL SIGNAL", location=location.abovebar, style=shape.triangledown, color=bear_col, size=size.normal, text="OFL▼")
+
+// Position Tool (Ghost Visuals)
+if show_pos
+    if sig_bull and not na(bull_sl) and not na(bull_entry) and not na(target_bull)
+        box.new(bar_index, bull_entry, bar_index + 30, target_bull, bgcolor=color.new(bull_col, 94), border_color=color.new(bull_col, 70))
+        box.new(bar_index, bull_entry, bar_index + 30, bull_sl,      bgcolor=color.new(bear_col, 94), border_color=color.new(bear_col, 70))
+        line.new(bar_index, bull_entry, bar_index + 30, bull_entry, color=color.white, width=1)
+        label.new(bar_index + 30, target_bull, "TP: " + str.tostring(math.round(target_bull, 5)), style=label.style_label_left, color=bull_col, textcolor=color.white, size=size.tiny)
+
+    if sig_bear and not na(bear_sl) and not na(bear_entry) and not na(target_bear)
+        box.new(bar_index, bear_entry, bar_index + 30, target_bear, bgcolor=color.new(bear_col, 94), border_color=color.new(bear_col, 70))
+        box.new(bar_index, bear_entry, bar_index + 30, bear_sl,      bgcolor=color.new(bull_col, 94), border_color=color.new(bull_col, 70))
+        line.new(bar_index, bear_entry, bar_index + 30, bear_entry, color=color.white, width=1)
+        label.new(bar_index + 30, target_bear, "TP: " + str.tostring(math.round(target_bear, 5)), style=label.style_label_left, color=bear_col, textcolor=color.white, size=size.tiny)
+
+// ─────────────────────────────────────────────
+// SECTION 8: FORENSIC DASHBOARD
+// ─────────────────────────────────────────────
+var table dsh = table.new(position.top_right, 2, 6, bgcolor=color.new(#0D1117, 10), border_color=#30363D, border_width=1)
+table.cell(dsh, 0, 0, "MMC Forensic S1", text_color=color.white, bgcolor=#161B22)
+table.cell(dsh, 1, 0, syminfo.ticker, text_color=color.gray, bgcolor=#161B22)
+
+table.cell(dsh, 0, 1, "HTF Bias", text_color=color.gray, text_size=size.tiny)
+table.cell(dsh, 1, 1, (htf_bias == 1 ? "BULL" : "BEAR"), text_color=(htf_bias == 1 ? bull_col : bear_col), text_size=size.tiny)
+
+table.cell(dsh, 0, 2, "LTF Status", text_color=color.gray, text_size=size.tiny)
+table.cell(dsh, 1, 2, (not na(ltf_eq) ? "ACTIVE ✅" : "SCANNING"), text_color=(not na(ltf_eq) ? color.lime : color.orange), text_size=size.tiny)
+
+table.cell(dsh, 0, 3, "Min Conf", text_color=color.gray, text_size=size.tiny)
+table.cell(dsh, 1, 3, str.tostring(conf_min), text_color=color.white, text_size=size.tiny)
+
+table.cell(dsh, 0, 4, "Current Signal", text_color=color.gray, text_size=size.tiny)
+table.cell(dsh, 1, 4, sig_bull ? "BUY 🟢" : sig_bear ? "SELL 🔴" : "NONE", text_color=(sig_bull ? bull_col : sig_bear ? bear_col : color.gray), text_size=size.tiny)

@@ -1,0 +1,76 @@
+// ============================================================================================================================
+// MMC Forensic Structure Engine — "Premium Edition" (v2.3)
+// Author   : MMC Institutional Research
+// Style    : Midnight Forensic Palette (Gold & Purple)
+// ============================================================================================================================
+
+//@version=6
+indicator("MMC Forensic Structure Engine", overlay=true, max_bars_back=1000, max_lines_count=100, max_boxes_count=50, max_labels_count=100)
+
+// ─────────────────────────────────────────────
+// SETTINGS
+// ─────────────────────────────────────────────
+grp_htf = "═══ Institutional Sync ═══"
+htf_tf  = input.string("240", "HTF Timeframe", options=["1","3","5","15","60","240","1D","1W"], group=grp_htf)
+show_htf = input.bool(true, "Show HTF Labels (e.g. 4hrs ITH)", group=grp_htf)
+
+grp_ltf = "═══ Local Structure ═══"
+show_ltf = input.bool(true, "Show Local ITH/ITL", group=grp_ltf)
+show_st  = input.bool(false, "Show ST Points (Clutter)", group=grp_ltf)
+
+grp_vis = "═══ Visual Style ═══"
+ith_col  = input.color(color.new(#FFD600, 0), "ITH Color (Gold)",     group=grp_vis)
+itl_col  = input.color(color.new(#7C4DFF, 0), "ITL Color (Purple)",   group=grp_vis)
+txt_col  = input.color(color.new(#FFFFFF, 0), "Text Color",           group=grp_vis)
+
+// ─────────────────────────────────────────────
+// LOGIC: STRUCTURE DETECTION
+// ─────────────────────────────────────────────
+// LTF IT Points
+it_h = ta.pivothigh(high, 3, 3)
+it_l = ta.pivotlow(low,   3, 3)
+
+// HTF IT Points
+htf_ph = request.security(syminfo.tickerid, htf_tf, ta.pivothigh(high, 3, 3), lookahead=barmerge.lookahead_off)
+htf_pl = request.security(syminfo.tickerid, htf_tf, ta.pivotlow(low,   3, 3), lookahead=barmerge.lookahead_off)
+
+// ST Points
+sth = ta.pivothigh(high, 1, 1)
+stl = ta.pivotlow(low,   1, 1)
+
+// ─────────────────────────────────────────────
+// VISUALS: CLEAN LABELS & LINES
+// ─────────────────────────────────────────────
+f_tf_name(tf) =>
+    tf == "1" ? "1min" : tf == "3" ? "3min" : tf == "5" ? "5min" : tf == "15" ? "15min" : tf == "60" ? "1hr" : tf == "240" ? "4hrs" : tf == "1D" ? "Daily" : tf == "1W" ? "Weekly" : tf
+
+// Draw HTF Labels (Clean Horizontal Lines + Text)
+if show_htf
+    if not na(htf_ph)
+        label.new(bar_index, htf_ph, f_tf_name(htf_tf) + " ITH", style=label.style_none, textcolor=txt_col, size=size.small, yloc=yloc.abovebar)
+        line.new(bar_index - 5, htf_ph, bar_index + 5, htf_ph, color=ith_col, width=2)
+    if not na(htf_pl)
+        label.new(bar_index, htf_pl, f_tf_name(htf_tf) + " ITL", style=label.style_none, textcolor=txt_col, size=size.small, yloc=yloc.belowbar)
+        line.new(bar_index - 5, htf_pl, bar_index + 5, htf_pl, color=itl_col, width=2)
+
+// Draw LTF Labels
+if show_ltf
+    if not na(it_h)
+        label.new(bar_index - 3, it_h, "ITH", style=label.style_none, textcolor=txt_col, size=size.small, yloc=yloc.abovebar)
+        line.new(bar_index - 6, it_h, bar_index, it_h, color=ith_col, width=1)
+    if not na(it_l)
+        label.new(bar_index - 3, it_l, "ITL", style=label.style_none, textcolor=txt_col, size=size.small, yloc=yloc.belowbar)
+        line.new(bar_index - 6, it_l, bar_index, it_l, color=itl_col, width=1)
+
+// ST Points (Subtle dots)
+plotshape(show_st ? sth : na, "STH", location=location.abovebar, style=shape.circle, color=color.new(ith_col, 80), size=size.tiny)
+plotshape(show_st ? stl : na, "STL", location=location.belowbar, style=shape.circle, color=color.new(itl_col, 80), size=size.tiny)
+
+// ─────────────────────────────────────────────
+// DASHBOARD
+// ─────────────────────────────────────────────
+var table dsh = table.new(position.top_right, 2, 2, bgcolor=color.new(#0D1117, 15), border_color=#30363D, border_width=1)
+table.cell(dsh, 0, 0, "MMC Structure", text_color=color.white, bgcolor=#161B22)
+table.cell(dsh, 1, 0, timeframe.period, text_color=color.gray, bgcolor=#161B22)
+table.cell(dsh, 0, 1, "HTF Sync", text_color=color.gray, text_size=size.tiny)
+table.cell(dsh, 1, 1, f_tf_name(htf_tf), text_color=ith_col, text_size=size.tiny)

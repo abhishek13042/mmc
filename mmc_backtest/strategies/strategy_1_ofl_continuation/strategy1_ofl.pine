@@ -1,0 +1,326 @@
+// ╔══════════════════════════════════════════════════════════════╗
+// ║   MMC Strategy 1 — OFL Continuation [Arjo Pure]             ║
+// ║   Pine Script v6 | Structural SL | Position Tool Style      ║
+// ╚══════════════════════════════════════════════════════════════╝
+//@version=6
+indicator("MMC Strategy 1 — OFL Continuation [Arjo Pure]",
+     overlay          = true,
+     max_labels_count = 500,
+     max_lines_count  = 500,
+     max_boxes_count  = 500,
+     max_bars_back    = 500)
+
+// ─────────────────────────────────────────────────────────────
+// ① CONTROL PANEL
+// ─────────────────────────────────────────────────────────────
+grp_tf  = "① Timeframe"
+grp_mod = "② Display Mode"
+grp_sig = "③ Signal Filter"
+grp_ofl = "④ OFL Engine"
+grp_vis = "⑤ Visuals"
+
+tf_choice   = input.string("Current",      "Analyse Timeframe",
+     options  = ["Current","5m","15m","1h","4h","1D"],
+     group    = grp_tf,
+     tooltip  = "'Current' = chart TF. Selecting another TF pulls that data via security().")
+
+disp_mode   = input.string("Entries Only", "Display Mode",
+     options  = ["Entries Only","Full Analysis"],
+     group    = grp_mod,
+     tooltip  = "'Entries Only' = clean chart with only trade boxes.\n'Full Analysis' = also shows FVG boxes, swings, equilibrium.")
+
+sig_filter  = input.string("Both",         "Show Signals",
+     options  = ["Both","Bullish Only","Bearish Only"],
+     group    = grp_sig)
+
+swing_len   = input.int  (1,    "Swing Lookback (bars each side)", minval=1, maxval=5,   group=grp_ofl)
+fvg_window  = input.int  (5,    "FVG Search Window after Swing",   minval=1, maxval=20,  group=grp_ofl)
+min_rr      = input.float(2.0,  "Minimum RR to ERL",               minval=0.5, step=0.5, group=grp_ofl)
+max_rr_cap  = input.float(25.0, "Maximum RR Cap",                  minval=5.0, step=1.0, group=grp_ofl)
+proj_bars   = input.int  (40,   "Project Lines (bars right)",      minval=10, maxval=200, group=grp_ofl)
+
+bull_col    = input.color(color.new(#00E5FF, 0),  "Bullish Accent",    group=grp_vis)
+bear_col    = input.color(color.new(#FF4081, 0),  "Bearish Accent",    group=grp_vis)
+tp_fill     = input.color(color.new(#00E5FF, 85), "TP Zone Fill",      group=grp_vis)
+sl_fill     = input.color(color.new(#FF4081, 85), "SL Zone Fill",      group=grp_vis)
+ith_col     = input.color(color.new(#FF4081, 20), "ITH Line Color",    group=grp_vis)
+itl_col     = input.color(color.new(#00E5FF, 20), "ITL Line Color",    group=grp_vis)
+eq_col      = input.color(color.new(#FFD700, 50), "Equilibrium Color", group=grp_vis)
+
+// ─────────────────────────────────────────────────────────────
+// ② MULTI-TIMEFRAME DATA
+// ─────────────────────────────────────────────────────────────
+res = tf_choice == "Current" ? timeframe.period : tf_choice
+
+tf_o = request.security(syminfo.tickerid, res, open,  lookahead=barmerge.lookahead_off)
+tf_h = request.security(syminfo.tickerid, res, high,  lookahead=barmerge.lookahead_off)
+tf_l = request.security(syminfo.tickerid, res, low,   lookahead=barmerge.lookahead_off)
+tf_c = request.security(syminfo.tickerid, res, close, lookahead=barmerge.lookahead_off)
+
+// ─────────────────────────────────────────────────────────────
+// ③ SWING DETECTION
+// ─────────────────────────────────────────────────────────────
+swH = ta.pivothigh(tf_h, swing_len, swing_len)
+swL = ta.pivotlow (tf_l, swing_len, swing_len)
+
+var float lastSH    = na
+var int   lastSHBar = na
+var float lastSL    = na
+var int   lastSLBar = na
+
+if not na(swH)
+    lastSH    := swH
+    lastSHBar := bar_index - swing_len
+
+if not na(swL)
+    lastSL    := swL
+    lastSLBar := bar_index - swing_len
+
+show_full = disp_mode == "Full Analysis"
+
+plotshape(show_full and not na(swH),
+     title    = "Swing High",
+     location = location.abovebar,
+     style    = shape.triangledown,
+     color    = bear_col,
+     size     = size.tiny,
+     offset   = -swing_len)
+
+plotshape(show_full and not na(swL),
+     title    = "Swing Low",
+     location = location.belowbar,
+     style    = shape.triangleup,
+     color    = bull_col,
+     size     = size.tiny,
+     offset   = -swing_len)
+
+// ─────────────────────────────────────────────────────────────
+// ④ IT RANGE — ITH / ITL / EQUILIBRIUM
+// ─────────────────────────────────────────────────────────────
+var float itH = na
+var float itL = na
+
+if not na(swH)
+    itH := swH
+if not na(swL)
+    itL := swL
+
+eq = (not na(itH) and not na(itL)) ? (itH + itL) / 2 : na
+
+// ITH line
+var line ith_ln  = na
+var label ith_lb = na
+if barstate.islast and not na(itH)
+    if not na(ith_ln)
+        line.delete(ith_ln)
+        label.delete(ith_lb)
+    ith_ln := line.new(bar_index - 100, itH, bar_index + proj_bars, itH,
+         color = ith_col, width = 2, style = line.style_solid)
+    ith_lb := label.new(bar_index + proj_bars, itH,
+         "  ITH  " + str.tostring(itH, "#.#####"),
+         style    = label.style_label_left,
+         color    = color.new(color.black, 100),
+         textcolor = ith_col,
+         size     = size.small)
+
+// ITL line
+var line itl_ln  = na
+var label itl_lb = na
+if barstate.islast and not na(itL)
+    if not na(itl_ln)
+        line.delete(itl_ln)
+        label.delete(itl_lb)
+    itl_ln := line.new(bar_index - 100, itL, bar_index + proj_bars, itL,
+         color = itl_col, width = 2, style = line.style_solid)
+    itl_lb := label.new(bar_index + proj_bars, itL,
+         "  ITL  " + str.tostring(itL, "#.#####"),
+         style    = label.style_label_left,
+         color    = color.new(color.black, 100),
+         textcolor = itl_col,
+         size     = size.small)
+
+// Equilibrium — Full Analysis only
+plot(show_full and not na(eq) ? eq : na,
+     title     = "Equilibrium",
+     color     = eq_col,
+     linewidth = 1,
+     style     = plot.style_line)
+
+// ─────────────────────────────────────────────────────────────
+// ⑤ FVG DETECTION
+// ─────────────────────────────────────────────────────────────
+bullFVG = tf_l > tf_h[2] and tf_c[1] > tf_h[2]
+bearFVG = tf_h < tf_l[2] and tf_c[1] < tf_l[2]
+
+var float fvgBH   = na
+var float fvgBL   = na
+var int   fvgBBar = na
+var float fvgRH   = na
+var float fvgRL   = na
+var int   fvgRBar = na
+
+if bullFVG
+    fvgBH   := tf_l
+    fvgBL   := tf_h[2]
+    fvgBBar := bar_index
+
+if bearFVG
+    fvgRH   := tf_l[2]
+    fvgRL   := tf_h
+    fvgRBar := bar_index
+
+// FVG boxes — Full Analysis only
+if show_full and bullFVG
+    box.new(bar_index - 2, tf_l, bar_index + 20, tf_h[2],
+         border_color = bull_col,
+         bgcolor      = color.new(#00E5FF, 88),
+         border_width = 1)
+
+if show_full and bearFVG
+    box.new(bar_index - 2, tf_l[2], bar_index + 20, tf_h,
+         border_color = bear_col,
+         bgcolor      = color.new(#FF4081, 88),
+         border_width = 1)
+
+// ─────────────────────────────────────────────────────────────
+// ⑥ OFL DETECTION
+// ─────────────────────────────────────────────────────────────
+bullOFL = not na(lastSL) and bullFVG and
+          (bar_index - lastSLBar) <= fvg_window and
+          not na(eq) and tf_c < eq
+
+bearOFL = not na(lastSH) and bearFVG and
+          (bar_index - lastSHBar) <= fvg_window and
+          not na(eq) and tf_c > eq
+
+// ─────────────────────────────────────────────────────────────
+// ⑦ POSITION TOOL STYLE DRAWING FUNCTION
+// ─────────────────────────────────────────────────────────────
+draw_trade(float entry, float sl, float tp, bool is_bull, float rr) =>
+    right = bar_index + proj_bars
+
+    // TP zone (profit area)
+    tp_top = is_bull ? tp    : entry
+    tp_bot = is_bull ? entry : tp
+    box.new(bar_index, tp_bot, right, tp_top,
+         border_color = color.new(bull_col, 60),
+         bgcolor      = tp_fill,
+         border_width = 1)
+
+    // SL zone (risk area)
+    sl_top = is_bull ? entry : sl
+    sl_bot = is_bull ? sl    : entry
+    box.new(bar_index, sl_bot, right, sl_top,
+         border_color = color.new(bear_col, 60),
+         bgcolor      = sl_fill,
+         border_width = 1)
+
+    // Lines
+    line.new(bar_index, tp,    right, tp,    color = bull_col,      width = 2)
+    line.new(bar_index, entry, right, entry, color = color.white,   width = 1, style = line.style_dashed)
+    line.new(bar_index, sl,    right, sl,    color = bear_col,      width = 2)
+
+    // Info label
+    txt = (is_bull ? "🟢 LONG OFL" : "🔴 SHORT OFL") + "\n" +
+          "Entry : " + str.tostring(entry, "#.#####") + "\n" +
+          "SL    : " + str.tostring(sl,    "#.#####") + "\n" +
+          "ERL   : " + str.tostring(tp,    "#.#####") + "\n" +
+          "RR    : " + str.tostring(rr,    "#.##")    + "R"
+
+    label.new(right, is_bull ? tp : sl, txt,
+         style     = label.style_label_left,
+         color     = is_bull ? bull_col : bear_col,
+         textcolor = is_bull ? color.black : color.white,
+         size      = size.small)
+
+// ─────────────────────────────────────────────────────────────
+// ⑧ EXECUTE SIGNALS
+// ─────────────────────────────────────────────────────────────
+show_bull = sig_filter == "Both" or sig_filter == "Bullish Only"
+show_bear = sig_filter == "Both" or sig_filter == "Bearish Only"
+
+if bullOFL and show_bull
+    entry  = fvgBL
+    sl     = lastSL
+    erl    = itH
+    risk   = entry - sl
+    reward = erl - entry
+    rr     = risk > 0 ? reward / risk : 0.0
+    if rr >= min_rr and not na(erl) and erl > entry
+        draw_trade(entry, sl, erl, true, math.min(rr, max_rr_cap))
+
+if bearOFL and show_bear
+    entry  = fvgRH
+    sl     = lastSH
+    erl    = itL
+    risk   = sl - entry
+    reward = entry - erl
+    rr     = risk > 0 ? reward / risk : 0.0
+    if rr >= min_rr and not na(erl) and erl < entry
+        draw_trade(entry, sl, erl, false, math.min(rr, max_rr_cap))
+
+// ─────────────────────────────────────────────────────────────
+// ⑨ DASHBOARD TABLE
+// ─────────────────────────────────────────────────────────────
+var table dash = table.new(position.top_right, 2, 9,
+     bgcolor      = color.new(#0A0A0A, 70),
+     border_color = color.new(color.gray, 60),
+     border_width = 1,
+     frame_color  = color.new(color.gray, 40),
+     frame_width  = 1)
+
+f_cell(int col, int row, string txt, color tc, color bg) =>
+    table.cell(dash, col, row, txt,
+         text_color  = tc,
+         text_size   = size.small,
+         bgcolor     = bg,
+         text_halign = col == 1 ? text.align_right : text.align_left)
+
+if barstate.islast
+    hdr_bg   = color.new(#111111, 50)
+    row_bg   = color.new(#0A0A0A, 70)
+    bias_col = not na(eq) ? (tf_c > eq ? bear_col : bull_col) : color.gray
+    bias_txt = not na(eq) ? (tf_c > eq ? "▼ PREMIUM"  : "▲ DISCOUNT") : "N/A"
+
+    // Header
+    table.cell(dash, 0, 0, "MMC  Strategy 1  [Arjo Pure]",
+         text_color  = color.yellow,
+         text_size   = size.small,
+         bgcolor     = hdr_bg,
+         text_halign = text.align_center)
+    table.merge_cells(dash, 0, 0, 1, 0)
+
+    // Rows
+    f_cell(0, 1, "Timeframe",  color.silver, row_bg)
+    f_cell(1, 1, tf_choice,    color.gray,   row_bg)
+
+    f_cell(0, 2, "IT High",    color.silver, row_bg)
+    f_cell(1, 2, not na(itH) ? str.tostring(itH, "#.#####") : "N/A", ith_col, row_bg)
+
+    f_cell(0, 3, "IT Low",     color.silver, row_bg)
+    f_cell(1, 3, not na(itL) ? str.tostring(itL, "#.#####") : "N/A", itl_col, row_bg)
+
+    f_cell(0, 4, "Equilibrium", color.silver, row_bg)
+    f_cell(1, 4, not na(eq) ? str.tostring(eq, "#.#####") : "N/A", eq_col, row_bg)
+
+    f_cell(0, 5, "Bias",       color.silver, row_bg)
+    f_cell(1, 5, bias_txt,     bias_col,     row_bg)
+
+    f_cell(0, 6, "Display",    color.silver, row_bg)
+    f_cell(1, 6, disp_mode,    color.gray,   row_bg)
+
+    f_cell(0, 7, "Signals",    color.silver, row_bg)
+    f_cell(1, 7, sig_filter,   color.gray,   row_bg)
+
+    f_cell(0, 8, "Min RR",     color.silver, row_bg)
+    f_cell(1, 8, str.tostring(min_rr) + "R", color.yellow, row_bg)
+
+// ─────────────────────────────────────────────────────────────
+// ⑩ ALERTS
+// ─────────────────────────────────────────────────────────────
+alertcondition(bullOFL, "MMC — Bullish OFL",
+     "MMC S1: 🟢 LONG OFL on {{ticker}} [{{interval}}] — Discount zone FVG entry")
+alertcondition(bearOFL, "MMC — Bearish OFL",
+     "MMC S1: 🔴 SHORT OFL on {{ticker}} [{{interval}}] — Premium zone FVG entry")
+alertcondition(bullOFL or bearOFL, "MMC — Any OFL Signal",
+     "MMC S1: New OFL Signal on {{ticker}} [{{interval}}]")

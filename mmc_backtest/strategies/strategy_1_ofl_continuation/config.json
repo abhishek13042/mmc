@@ -1,0 +1,225 @@
+{
+  "strategy": "OFL_CONTINUATION",
+  "version": "1.0",
+  "parameters": {
+    "ofl_probability_labels": [
+      "HIGH",
+      "MEDIUM",
+      "LOW"
+    ],
+    "fvg_types_allowed": [
+      "PFVG",
+      "BFVG"
+    ],
+    "check_opposing_pda": false,
+    "buffer_pips": 0.1,
+    "min_rr": 2.0,
+    "min_risk_pips": 1.0,
+    "max_rr_cap": 25.0
+  },
+  "relaxation_options": {
+    "allow_low_prob": [
+      "HIGH",
+      "MEDIUM",
+      "LOW"
+    ],
+    "allow_all_fvgs": [
+      "PFVG",
+      "BFVG",
+      "RFVG"
+    ],
+    "disable_structure_block": false
+  },
+  "history": [
+    {
+      "date": "2026-04-22 18:07:39",
+      "previous": {
+        "ofl_probability_labels": [
+          "HIGH",
+          "MEDIUM"
+        ],
+        "fvg_types_allowed": [
+          "PFVG"
+        ],
+        "check_opposing_pda": true,
+        "buffer_pips": 2,
+        "min_rr": 2.0
+      },
+      "new": {
+        "ofl_probability_labels": [
+          "HIGH",
+          "MEDIUM",
+          "LOW"
+        ],
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG"
+        ],
+        "check_opposing_pda": false,
+        "buffer_pips": 2,
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    },
+    {
+      "date": "2026-04-22 18:13:07",
+      "previous": {
+        "ofl_probability_labels": [
+          "HIGH",
+          "MEDIUM",
+          "LOW"
+        ],
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG"
+        ],
+        "check_opposing_pda": false,
+        "buffer_pips": 2,
+        "min_rr": 2.0
+      },
+      "new": {
+        "ofl_probability_labels": [
+          "HIGH",
+          "MEDIUM",
+          "LOW"
+        ],
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG"
+        ],
+        "check_opposing_pda": false,
+        "buffer_pips": 2,
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    },
+    {
+      "date": "2026-04-22 18:19:57",
+      "previous": {
+        "ofl_probability_labels": [
+          "HIGH",
+          "MEDIUM",
+          "LOW"
+        ],
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG"
+        ],
+        "check_opposing_pda": false,
+        "buffer_pips": 2,
+        "min_rr": 2.0
+      },
+      "new": {
+        "ofl_probability_labels": [
+          "HIGH",
+          "MEDIUM",
+          "LOW"
+        ],
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG"
+        ],
+        "check_opposing_pda": false,
+        "buffer_pips": 2,
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    },
+    {
+      "date": "2026-04-22 18:22:30",
+      "previous": {
+        "ofl_probability_labels": [
+          "HIGH",
+          "MEDIUM",
+          "LOW"
+        ],
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG"
+        ],
+        "check_opposing_pda": false,
+        "buffer_pips": 2,
+        "min_rr": 2.0
+      },
+      "new": {
+        "ofl_probability_labels": [
+          "HIGH",
+          "MEDIUM",
+          "LOW"
+        ],
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG"
+        ],
+        "check_opposing_pda": false,
+        "buffer_pips": 2,
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    },
+    {
+      "date": "2026-04-22 18:25:16",
+      "previous": {
+        "ofl_probability_labels": [
+          "HIGH",
+          "MEDIUM",
+          "LOW"
+        ],
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG"
+        ],
+        "check_opposing_pda": false,
+        "buffer_pips": 2,
+        "min_rr": 2.0
+      },
+      "new": {
+        "ofl_probability_labels": [
+          "HIGH",
+          "MEDIUM",
+          "LOW"
+        ],
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG"
+        ],
+        "check_opposing_pda": false,
+        "buffer_pips": 2,
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    },
+    {
+      "date": "2026-04-22 18:28:55",
+      "previous": {
+        "ofl_probability_labels": [
+          "HIGH",
+          "MEDIUM",
+          "LOW"
+        ],
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG"
+        ],
+        "check_opposing_pda": false,
+        "buffer_pips": 2,
+        "min_rr": 2.0
+      },
+      "new": {
+        "ofl_probability_labels": [
+          "HIGH",
+          "MEDIUM",
+          "LOW"
+        ],
+        "fvg_types_allowed": [
+          "PFVG",
+          "BFVG"
+        ],
+        "check_opposing_pda": false,
+        "buffer_pips": 2,
+        "min_rr": 2.0
+      },
+      "mode": "Relaxed"
+    }
+  ]
+}
