@@ -115,9 +115,11 @@ def get_available_data(data_dir: str = None) -> dict:
     
     return inventory
 
+_CANDLE_CACHE = {}
+
 def fetch_candles(instrument: str, timeframe: str, data_dir: str = None) -> pd.DataFrame:
     """
-    Load data for instrument + timeframe.
+    Load data for instrument + timeframe with caching.
     Filename format: {INSTRUMENT}{MINUTES}.csv
     """
     if data_dir is None:
@@ -127,6 +129,12 @@ def fetch_candles(instrument: str, timeframe: str, data_dir: str = None) -> pd.D
         raise ValueError(f"Unsupported timeframe: {timeframe}. Use: {list(TIMEFRAME_MAP.keys())}")
 
     suffix = TIMEFRAME_MAP[timeframe]
+    cache_key = (instrument, suffix, data_dir)
+    
+    if cache_key in _CANDLE_CACHE:
+        # print(f"Using cached data for: {instrument}{suffix}")
+        return _CANDLE_CACHE[cache_key].copy()
+
     filepath = os.path.join(data_dir, f"{instrument}{suffix}.csv")
     
     if not os.path.exists(filepath):
@@ -138,7 +146,9 @@ def fetch_candles(instrument: str, timeframe: str, data_dir: str = None) -> pd.D
             raise FileNotFoundError(f"No data found for {instrument} {timeframe} at {filepath}")
 
     print(f"Loading data from: {os.path.basename(filepath)}")
-    return load_csv(filepath)
+    df = load_csv(filepath)
+    _CANDLE_CACHE[cache_key] = df
+    return df.copy()
 
 if __name__ == "__main__":
     # Test block

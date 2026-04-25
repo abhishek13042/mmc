@@ -227,28 +227,34 @@ def check_ofl_invalidation(ofl_dict, current_price):
 def scan_candles_for_ofls(df, instrument):
     fvgs = scan_candles_for_fvgs(df, instrument)
     swings = scan_candles_for_swings(df)
-    it_points = scan_it_points(df)
+    
+    # Sort FVGs by datetime for pointer efficiency
+    fvgs_sorted = sorted(fvgs, key=lambda x: x["candle1_datetime"])
     
     results = []
+    fvg_ptr = 0
+    
     for s in swings:
-        # Find FVG immediately after
-        following_fvgs = [f for f in fvgs if f["candle1_datetime"] >= s["datetime"] and f["direction"] == ("BULLISH" if s["swing_type"] == "SWING_LOW" else "BEARISH")]
-        if not following_fvgs: continue
+        # Move fvg_ptr to the first FVG that starts at or after this swing
+        while fvg_ptr < len(fvgs_sorted) and fvgs_sorted[fvg_ptr]["candle1_datetime"] < s["datetime"]:
+            fvg_ptr += 1
+            
+        # Check subsequent FVGs for a match
+        # Usually the OFL FVG is within the next few candles
+        match_ptr = fvg_ptr
+        target_dir = ("BULLISH" if s["swing_type"] == "SWING_LOW" else "BEARISH")
         
-        fvg = following_fvgs[0] # Take closest
-        
-        # Try to find associated FVA
-        # (Simplified: find most recent FVA buildable from this swing and previous IT point)
-        direction = "BULLISH" if s["swing_type"] == "SWING_LOW" else "BEARISH"
-        fva = {}
-        # In full implementation, we'd search it_points to build FVA
-        
-        try:
-            ofl = build_ofl(s["swing_level"], s["swing_type"], fvg, fva, direction, instrument)
-            ofl["datetime"] = s["datetime"]
-            results.append(ofl)
-        except:
-            continue
+        while match_ptr < len(fvgs_sorted) and match_ptr < fvg_ptr + 10: # Lookahead 10 FVGs max
+            fvg = fvgs_sorted[match_ptr]
+            if fvg["direction"] == target_dir:
+                try:
+                    ofl = build_ofl(s["swing_level"], s["swing_type"], fvg, {}, target_dir, instrument)
+                    ofl["datetime"] = s["datetime"]
+                    results.append(ofl)
+                    break # Found the closest matching FVG
+                except:
+                    pass
+            match_ptr += 1
             
     results.sort(key=lambda x: x["datetime"], reverse=True)
     return results

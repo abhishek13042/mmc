@@ -51,17 +51,19 @@ def run_backtest(instrument, timeframe, data_dir=None):
         }
         
     # 3. Simulate Trades
+    # 3. Build Datetime to Index mapping for fast lookup
+    dt_to_idx = {str(dt): idx for idx, dt in enumerate(df['datetime'])}
+    
     trades = []
     nested_used_count = 0
     total_fva_size = 0
     
     for sig in signals:
-        signal_dt = sig['signal_datetime']
-        idx_list = df.index[df['datetime'] == signal_dt].tolist()
-        if not idx_list:
+        signal_dt = str(sig['signal_datetime'])
+        if signal_dt not in dt_to_idx:
             continue
         
-        start_idx = idx_list[0] + 1 
+        start_idx = dt_to_idx[signal_dt] + 1
         
         direction = sig['direction']
         entry = sig['entry_price']

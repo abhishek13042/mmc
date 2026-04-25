@@ -39,16 +39,37 @@ def calculate_performance(trades):
         "avg_rr": round(total_rr / len(trades), 2) if trades else 0
     }
 
-def run_backtest(instrument, htf, ltf, n_candles=1000):
+def run_backtest(instrument, timeframe=None, data_dir=None, n_candles=2000, **kwargs):
     """
-    Run backtest for Strategy 5.
+    Run backtest for Strategy 5 (Candle Science).
+    Adaptive LTF selection based on HTF.
     """
-    print(f"Loading {htf} and {ltf} data for {instrument}...")
-    df_htf = fetch_candles(instrument, htf)
-    df_ltf = fetch_candles(instrument, ltf)
+    # Accept direct htf/ltf if provided by master runner
+    htf = kwargs.get('htf', timeframe).upper() if (timeframe or 'htf' in kwargs) else 'DAILY'
+    ltf = kwargs.get('ltf')
     
+    if not ltf:
+        # Map HTF to LTF for refinement
+        tf_map = {
+            'DAILY': '1H',
+            '4H': '15M',
+            '1H': '5M',
+            '15M': '1M'
+        }
+        ltf = tf_map.get(htf, '15M')
+    
+    print(f"Starting Strategy 5 Backtest: {instrument} {htf} (LTF: {ltf})")
+    
+    # 1. Load Data
+    try:
+        df_htf = fetch_candles(instrument, htf, data_dir)
+        df_ltf = fetch_candles(instrument, ltf, data_dir)
+    except Exception as e:
+        print(f"Error loading data for S5: {e}")
+        return None
+        
     if df_htf is None or df_ltf is None:
-        return {"error": "Could not load data"}
+        return None
         
     # Limit for backtest speed
     df_htf_sample = df_htf.tail(n_candles // 10 if htf == 'DAILY' else n_candles).copy()
@@ -57,14 +78,15 @@ def run_backtest(instrument, htf, ltf, n_candles=1000):
     signals = scan_candle_science(df_htf_sample, df_ltf, instrument, htf, ltf)
     print(f"Found {len(signals)} signals.")
     
-    trades = []
+    # 3. Build Datetime to Index mapping for fast lookup
+    dt_to_idx = {str(dt): idx for idx, dt in enumerate(df_ltf['datetime'])}
     
+    trades = []
     for sig in signals:
-        signal_dt = sig['signal_datetime']
-        idx_list = df_ltf.index[df_ltf['datetime'] == signal_dt].tolist()
-        if not idx_list: continue
+        signal_dt = str(sig['signal_datetime'])
+        if signal_dt not in dt_to_idx: continue
         
-        start_idx = idx_list[0] + 1
+        start_idx = dt_to_idx[signal_dt] + 1
         direction = sig['direction']
         entry = sig['entry_price']
         sl = sig['stop_loss']

@@ -139,12 +139,18 @@ def scan_ofl_continuation(df, instrument, timeframe):
         can_enter = current_candle['low'] <= entry_price <= current_candle['high']
             
         if not can_enter:
-            # Mitigation logic - also O(K) where K is active FVG count
-            for pfvg in active_pfvgs:
+            # Mitigation logic - optimized to only check unmitigated candidates
+            # and limit search to improve speed
+            for pfvg in active_pfvgs[-50:]: # Only check recent candidates
                 if not pfvg['mitigated']:
-                    if current_candle['low'] <= pfvg['data']['fvg_low'] <= current_candle['high'] or \
-                       current_candle['low'] <= pfvg['data']['fvg_high'] <= current_candle['high']:
+                    f = pfvg['data']
+                    if current_candle['low'] <= f['fvg_low'] <= current_candle['high'] or \
+                       current_candle['low'] <= f['fvg_high'] <= current_candle['high']:
                         pfvg['mitigated'] = True
+            
+            # Periodically clean up fully mitigated ones to keep list small
+            if i % 1000 == 0:
+                active_pfvgs = [f for f in active_pfvgs if not f['mitigated']]
             continue
 
         # 5. Signal Found

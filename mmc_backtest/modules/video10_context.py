@@ -69,10 +69,10 @@ def build_context_area(instrument, timeframe, boundary_dict, direction, swing_li
         return None
 
     # Defense mapping
-    bt = boundary_dict['boundary_type']
+    bt = boundary_dict.get('boundary_type', 'SWING_POINT')
     defense = 'FLOD'
     if bt == 'FVA': defense = 'ODD'
-    elif bt in ['SWING_POINT', 'PCH', 'PCL']: defense = 'LOD'
+    elif bt in ['SWING_POINT', 'PCH', 'PCL', 'FVG']: defense = 'LOD'
     
     return {
         'id': f"ctx_{pd.Timestamp.now().strftime('%Y%m%d%H%M%S')}",

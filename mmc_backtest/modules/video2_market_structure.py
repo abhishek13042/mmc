@@ -116,7 +116,7 @@ def is_it_protected(it_level, it_type, current_price):
 
 def calculate_fva_boundaries(it_high, it_low):
     if it_high <= it_low:
-        raise ValueError("IT High must be above IT Low")
+        return None
     return {
         "fva_high": it_high,
         "fva_low": it_low,
@@ -124,7 +124,11 @@ def calculate_fva_boundaries(it_high, it_low):
     }
 
 def detect_overlapping_fvg(fva_high, fva_low, fvg_list):
-    for fvg in fvg_list:
+    # Optimized: only check the most recent 100 FVGs 
+    # to avoid O(N^2) when called in a loop.
+    search_range = fvg_list[-100:] if len(fvg_list) > 100 else fvg_list
+    
+    for fvg in reversed(search_range):
         if not fvg.get("is_mitigated", False):
             # BULLISH FVA overlaps with fva_low
             overlap_bull = fvg["fvg_high"] >= fva_low and fvg["fvg_low"] <= fva_low
@@ -138,9 +142,12 @@ def detect_overlapping_fvg(fva_high, fva_low, fvg_list):
     return {"has_overlap": False, "overlapping_fvg": None, "overlap_quality": "NONE"}
 
 def detect_nested_fva(fva_high, fva_low, it_points_list):
+    # Optimized: only check recent IT points
+    search_range = it_points_list[-50:] if len(it_points_list) > 50 else it_points_list
+    
     # Sort points to find the innermost
-    it_highs = sorted([p for p in it_points_list if p["point_type"] == "IT_HIGH" and fva_low < p["price_level"] < fva_high], key=lambda x: x["price_level"])
-    it_lows = sorted([p for p in it_points_list if p["point_type"] == "IT_LOW" and fva_low < p["price_level"] < fva_high], key=lambda x: x["price_level"], reverse=True)
+    it_highs = sorted([p for p in search_range if p["point_type"] == "IT_HIGH" and fva_low < p["price_level"] < fva_high], key=lambda x: x["price_level"])
+    it_lows = sorted([p for p in search_range if p["point_type"] == "IT_LOW" and fva_low < p["price_level"] < fva_high], key=lambda x: x["price_level"], reverse=True)
     
     if it_highs and it_lows:
         return {
@@ -187,6 +194,9 @@ def build_fva_from_it_points(it_high_price, it_low_price, instrument, fvg_list=N
     if it_points_list is None: it_points_list = []
     
     bounds = calculate_fva_boundaries(it_high_price, it_low_price)
+    if not bounds:
+        return None
+        
     fh, fl = bounds["fva_high"], bounds["fva_low"]
     
     overlap_res = detect_overlapping_fvg(fh, fl, fvg_list)

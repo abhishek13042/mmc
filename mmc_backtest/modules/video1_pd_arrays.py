@@ -195,91 +195,69 @@ def scan_candles_for_fvgs(df, instrument):
         if col not in df.columns:
             raise ValueError(f"DataFrame missing column: {col}")
     
+    # Use numpy arrays for speed
+    highs = df['high'].values
+    lows = df['low'].values
+    closes = df['close'].values
+    dts = df['datetime'].values
+    
     results = []
     for i in range(len(df) - 2):
-        c1 = df.iloc[i]
-        c2 = df.iloc[i+1]
-        c3 = df.iloc[i+2]
-        
         # Bullish
-        bull_res = validate_bullish_fvg(c1.high, c1.low, c2.high, c2.low, c3.high, c3.low, c2.close)
+        bull_res = validate_bullish_fvg(highs[i], lows[i], highs[i+1], lows[i+1], highs[i+2], lows[i+2], closes[i+1])
         if bull_res["is_valid"]:
-            rr = calculate_rejection_ratio(bull_res["fvg_high"], bull_res["fvg_low"], c3.high, c3.low, "BULLISH")
-            ft = classify_fvg_type(rr, c3.high, c3.low, c2.high, c2.low, "BULLISH")
+            rr = calculate_rejection_ratio(bull_res["fvg_high"], bull_res["fvg_low"], highs[i+2], lows[i+2], "BULLISH")
+            ft = classify_fvg_type(rr, highs[i+2], lows[i+2], highs[i+1], lows[i+1], "BULLISH")
             fs = calculate_fvg_size_pips(bull_res["fvg_high"], bull_res["fvg_low"], instrument)
             results.append({
                 "direction": "BULLISH",
-                "fvg_high": bull_res["fvg_high"],
-                "fvg_low": bull_res["fvg_low"],
-                "fvg_type": ft,
-                "fvg_size_pips": fs,
-                "rejection_ratio": rr,
-                "candle1_datetime": c1.datetime,
-                "candle3_datetime": c3.datetime,
-                "candle1_high": c1.high, "candle1_low": c1.low,
-                "candle2_high": c2.high, "candle2_low": c2.low,
-                "candle3_high": c3.high, "candle3_low": c3.low,
+                "fvg_high": bull_res["fvg_high"], "fvg_low": bull_res["fvg_low"],
+                "fvg_type": ft, "fvg_size_pips": fs, "rejection_ratio": rr,
+                "candle1_datetime": dts[i], "candle3_datetime": dts[i+2],
+                "candle1_high": highs[i], "candle1_low": lows[i],
+                "candle2_high": highs[i+1], "candle2_low": lows[i+1],
+                "candle3_high": highs[i+2], "candle3_low": lows[i+2],
                 "is_mitigated": False
             })
             
         # Bearish
-        bear_res = validate_bearish_fvg(c1.high, c1.low, c2.high, c2.low, c3.high, c3.low, c2.close)
+        bear_res = validate_bearish_fvg(highs[i], lows[i], highs[i+1], lows[i+1], highs[i+2], lows[i+2], closes[i+1])
         if bear_res["is_valid"]:
-            rr = calculate_rejection_ratio(bear_res["fvg_high"], bear_res["fvg_low"], c3.high, c3.low, "BEARISH")
-            ft = classify_fvg_type(rr, c3.high, c3.low, c2.high, c2.low, "BEARISH")
+            rr = calculate_rejection_ratio(bear_res["fvg_high"], bear_res["fvg_low"], highs[i+2], lows[i+2], "BEARISH")
+            ft = classify_fvg_type(rr, highs[i+2], lows[i+2], highs[i+1], lows[i+1], "BEARISH")
             fs = calculate_fvg_size_pips(bear_res["fvg_high"], bear_res["fvg_low"], instrument)
             results.append({
                 "direction": "BEARISH",
-                "fvg_high": bear_res["fvg_high"],
-                "fvg_low": bear_res["fvg_low"],
-                "fvg_type": ft,
-                "fvg_size_pips": fs,
-                "rejection_ratio": rr,
-                "candle1_datetime": c1.datetime,
-                "candle3_datetime": c3.datetime,
-                "candle1_high": c1.high, "candle1_low": c1.low,
-                "candle2_high": c2.high, "candle2_low": c2.low,
-                "candle3_high": c3.high, "candle3_low": c3.low,
+                "fvg_high": bear_res["fvg_high"], "fvg_low": bear_res["fvg_low"],
+                "fvg_type": ft, "fvg_size_pips": fs, "rejection_ratio": rr,
+                "candle1_datetime": dts[i], "candle3_datetime": dts[i+2],
+                "candle1_high": highs[i], "candle1_low": lows[i],
+                "candle2_high": highs[i+1], "candle2_low": lows[i+1],
+                "candle3_high": highs[i+2], "candle3_low": lows[i+2],
                 "is_mitigated": False
             })
             
     return results
 
 def scan_candles_for_swings(df):
+    highs = df['high'].values
+    lows = df['low'].values
+    dts = df['datetime'].values
+    
     results = []
     for i in range(1, len(df) - 1):
-        left = df.iloc[i-1]
-        middle = df.iloc[i]
-        right = df.iloc[i+1]
-        
         # High
-        high_res = validate_swing_high(left.high, middle.high, right.high)
-        if high_res["is_valid"]:
+        if highs[i] > highs[i-1] and highs[i] > highs[i+1]:
             results.append({
-                "swing_type": "SWING_HIGH",
-                "swing_level": high_res["swing_level"],
-                "datetime": middle.datetime,
-                "left_value": left.high,
-                "middle_value": middle.high,
-                "right_value": right.high,
-                "is_confirmed": True,
-                "is_mitigated": False,
-                "liquidity_type": "UNKNOWN"
+                "swing_type": "SWING_HIGH", "swing_level": highs[i],
+                "datetime": dts[i], "is_confirmed": True, "is_mitigated": False
             })
             
         # Low
-        low_res = validate_swing_low(left.low, middle.low, right.low)
-        if low_res["is_valid"]:
+        if lows[i] < lows[i-1] and lows[i] < lows[i+1]:
             results.append({
-                "swing_type": "SWING_LOW",
-                "swing_level": low_res["swing_level"],
-                "datetime": middle.datetime,
-                "left_value": left.low,
-                "middle_value": middle.low,
-                "right_value": right.low,
-                "is_confirmed": True,
-                "is_mitigated": False,
-                "liquidity_type": "UNKNOWN"
+                "swing_type": "SWING_LOW", "swing_level": lows[i],
+                "datetime": dts[i], "is_confirmed": True, "is_mitigated": False
             })
     return results
 

@@ -11,6 +11,7 @@ if MMC_DIR not in sys.path: sys.path.insert(0, MMC_DIR)
 
 from modules.data_engine import fetch_candles
 from modules.video1_pd_arrays import scan_candles_for_fvgs, get_pip_multiplier
+from modules.video2_market_structure import scan_it_points
 from modules.video3_4_order_flow import scan_candles_for_ofls
 from modules.video5_candle_science import get_candle_science_bias
 
@@ -45,118 +46,97 @@ def analyze_candle_visual(candle):
 
 def scan_candle_science(df_htf, df_ltf, instrument, htf, ltf):
     """
-    Scans for Strategy 5: Candle Science Bias Entry.
-    Requires aligned HTF and LTF dataframes.
+    SUPER-OPTIMIZED Strategy 5 Scanner (O(N)).
     """
     signals = []
     pip_multiplier = get_pip_multiplier(instrument)
     
-    # Buffers
-    if 'JPY' in instrument:
-        buffer = 0.02
-    elif 'XAU' in instrument:
-        buffer = 0.20
-    else:
-        buffer = 0.0002
+    # 1. Pre-calculate all indicators
+    all_ofls = sorted(scan_candles_for_ofls(df_ltf, instrument), key=lambda x: x['datetime'])
+    all_it_points = sorted(scan_it_points(df_ltf), key=lambda x: x['datetime'])
+    
+    # 2. Map OFLs for easy directional lookup
+    # Grouping by datetime is not needed if we use pointers, but since we need MOST RECENT matching direction:
+    ofl_ptr = 0
+    it_ptr = 0
+    current_ofl_bull = None
+    current_ofl_bear = None
+    recent_it_high = None
+    recent_it_low = None
 
-    # Iterate through HTF candles
-    # We need enough HTF data for bias check and signal analysis
     for i in range(50, len(df_htf)):
-        # The signal is based on the LAST CLOSED HTF candle
-        # Current candle i is the one where we are "standing"
         htf_candle = df_htf.iloc[i-1]
-        htf_datetime = htf_candle['datetime']
+        htf_dt = htf_candle['datetime']
+        ltf_limit_dt = df_htf.iloc[i]['datetime']
         
-        # 1. Condition 1: HTF Candle Science Signal (Visual)
+        # 1. Update Indicators using Pointers to the LTF timeframe
+        while ofl_ptr < len(all_ofls) and all_ofls[ofl_ptr]['datetime'] <= ltf_limit_dt:
+            ofl = all_ofls[ofl_ptr]
+            if ofl['direction'] == 'BULLISH': current_ofl_bull = ofl
+            else: current_ofl_bear = ofl
+            ofl_ptr += 1
+            
+        while it_ptr < len(all_it_points) and all_it_points[it_ptr]['datetime'] <= ltf_limit_dt:
+            pt = all_it_points[it_ptr]
+            if pt['point_type'] == 'IT_HIGH': recent_it_high = pt
+            else: recent_it_low = pt
+            it_ptr += 1
+            
+        # 2. HTF Candle Science Analysis
         analysis = analyze_candle_visual(htf_candle)
         if analysis['type'] == 'NEUTRAL':
             continue
             
         direction = 'BULLISH' if analysis['next'] == 'CONTINUE_HIGHER' else 'BEARISH'
         
-        # 2. Condition 2: 3-TF Bias Aligns
-        # Note: we use the datetime of the HTF candle for the bias check context
-        bias = get_candle_science_bias(instrument, htf_datetime)
+        # 3. 3-TF Bias Alignment (Pre-calculated in modules)
+        bias = get_candle_science_bias(instrument, htf_dt)
         if bias['overall_bias'] != direction or bias['bias_confidence'] not in ['HIGH', 'MEDIUM']:
             continue
             
-        # 3. Align with LTF
-        # Find the LTF window up to the current HTF candle start time
-        ltf_limit_dt = df_htf.iloc[i]['datetime']
-        ltf_window = df_ltf[df_ltf['datetime'] <= ltf_limit_dt]
-        
-        if len(ltf_window) < 50:
-            continue
-            
-        # 4. Condition 3 & 4: LTF OFL and PFVG
-        ofls = scan_candles_for_ofls(ltf_window, instrument)
-        if not ofls:
-            continue
-            
-        # Find most recent OFL in matching direction with PFVG
-        matching_ofl = None
-        for ofl in reversed(ofls):
-            if ofl['direction'] == direction and ofl['probability_label'] in ['HIGH', 'MEDIUM']:
-                # Check for associated PFVG
-                # In our system, ofl usually has an associated FVG
-                if ofl.get('fvg_type') == 'PFVG':
-                    matching_ofl = ofl
-                    break
-        
-        if not matching_ofl:
+        # 4. LTF Confluence
+        target_ofl = current_ofl_bull if direction == 'BULLISH' else current_ofl_bear
+        if not target_ofl or target_ofl['probability_label'] not in ['HIGH', 'MEDIUM'] or target_ofl.get('fvg_type') != 'PFVG':
             continue
             
         # Entry, SL, TP
-        entry_price = matching_ofl['fvg_low'] if direction == 'BULLISH' else matching_ofl['fvg_high']
-        sl = matching_ofl['swing_point_price']
-        
+        entry_price = target_ofl['fvg_low'] if direction == 'BULLISH' else target_ofl['fvg_high']
+        sl = target_ofl['swing_point_price']
         risk = abs(entry_price - sl)
         if risk <= 0: continue
         
         tp_2r = entry_price + (risk * 2.0) if direction == 'BULLISH' else entry_price - (risk * 2.0)
         tp_4r = entry_price + (risk * 4.0) if direction == 'BULLISH' else entry_price - (risk * 4.0)
         
-        # Structural target on entry TF: nearest IT_HIGH (bull) / IT_LOW (bear)
-        from modules.video2_market_structure import scan_it_points
-        it_points = scan_it_points(ltf_window)
+        # Structural Target
         target_price = None
+        if direction == 'BULLISH' and recent_it_high:
+            target_price = recent_it_high['price_level']
+        elif direction == 'BEARISH' and recent_it_low:
+            target_price = recent_it_low['price_level']
         
+        final_tp = target_price if target_price else tp_4r
+        # Bound TP by 2R minimum and 4R maximum
         if direction == 'BULLISH':
-            highs = [p['price_level'] for p in it_points if p['point_type'] == 'IT_HIGH' and p['price_level'] > entry_price]
-            if highs: target_price = min(highs)
+            final_tp = max(tp_2r, min(final_tp, tp_4r))
         else:
-            lows = [p['price_level'] for p in it_points if p['point_type'] == 'IT_LOW' and p['price_level'] < entry_price]
-            if lows: target_price = max(lows)
-            
-        if not target_price:
-            target_price = tp_4r
-            
-        # Final TP logic: closer of structural or 4R, but must be at least 2R
-        if direction == 'BULLISH':
-            final_tp = min(target_price, tp_4r)
-            if final_tp < tp_2r: continue
-        else:
-            final_tp = max(target_price, tp_4r)
-            if final_tp > tp_2r: continue
+            final_tp = min(tp_2r, max(final_tp, tp_4r))
             
         signals.append({
             'strategy': 'CANDLE_SCIENCE',
             'instrument': instrument,
             'htf': htf,
             'ltf': ltf,
-            'signal_datetime': ltf_window.iloc[-1]['datetime'],
+            'signal_datetime': ltf_limit_dt,
             'direction': direction,
-            'htf_candle_type': analysis['type'],
-            'htf_confidence': 100, # Visual confirmation is binary in this logic
-            'bias_confidence': bias['bias_confidence'],
-            'ltf_ofl_probability': matching_ofl['probability_label'],
             'entry_price': round(entry_price, 5),
             'stop_loss': round(sl, 5),
             'tp_2r': round(tp_2r, 5),
             'tp_4r': round(final_tp, 5),
-            'risk_pips': round(risk * pip_multiplier, 2),
-            'conditions_met': ['HTF_CS_SIGNAL', '3TF_BIAS_ALIGN', 'LTF_OFL_PFVG'],
+            'risk_pips': round(risk * pip_multiplier, 2)
         })
+        
+    return signals
         
     return signals
 

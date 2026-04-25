@@ -23,21 +23,16 @@ def run_backtest(instrument, timeframe, data_dir=None) -> dict:
         
     signals = scan_it_retracement(df, instrument, timeframe)
 
+    # 3. Build Datetime to Index mapping for fast lookup
+    dt_to_idx = {str(dt): idx for idx, dt in enumerate(df['datetime'])}
+    
     trades = []
     for sig in signals:
-        # Find signal index in df
-        try:
-            # signal_datetime is a string from scanner
-            sig_dt = pd.to_datetime(sig['signal_datetime'])
-            # Find nearest match or exact
-            if sig_dt in df['datetime'].values:
-                sig_idx = df.index[df['datetime'] == sig_dt][0]
-            else:
-                # Fallback to index search
-                diffs = (pd.to_datetime(df['datetime']) - sig_dt).abs()
-                sig_idx = diffs.idxmin()
-        except:
+        # Find signal index in df using optimized map
+        sig_dt_str = str(sig['signal_datetime'])
+        if sig_dt_str not in dt_to_idx:
             continue
+        sig_idx = dt_to_idx[sig_dt_str]
             
         result      = 'NEUTRAL'
         rr_achieved = 0.0

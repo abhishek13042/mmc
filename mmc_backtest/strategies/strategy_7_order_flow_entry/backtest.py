@@ -29,23 +29,23 @@ def run_backtest(instrument, context_tf, entry_tf, data_dir=None) -> dict:
     checklist_fails_counter = Counter()
     ofl_prob_pairs = []
     
+    # 3. Build Datetime to Index mapping for fast lookup
+    dt_to_idx = {str(dt): idx for idx, dt in enumerate(df_entry['datetime'])}
+    
     for sig in signals:
-        sig_time = pd.to_datetime(sig['signal_datetime'])
-        entry_price = sig['entry_price']
+        # Find signal index in df using optimized map
+        sig_dt_str = str(sig['signal_datetime'])
+        if sig_dt_str not in dt_to_idx:
+            continue
+        sig_idx = dt_to_idx[sig_dt_str]
+        
+        # Forward Simulation
+        trade_data = df_entry.iloc[sig_idx + 1 : sig_idx + 101]
+        
+        direction = sig['direction']
         stop_loss = sig['stop_loss']
         tp_2r = sig['tp_2r']
         context_target = sig['context_target']
-        direction = sig['direction']
-        
-        # Track stats
-        for item in sig['checklist_failed_items']:
-            checklist_fails_counter[item] += 1
-        
-        prob_pair = sorted([sig['ofl_1_probability'], sig['ofl_2_probability']], reverse=True)
-        ofl_prob_pairs.append(f"{prob_pair[0]}_{prob_pair[1]}")
-        
-        # Forward Simulation
-        trade_data = df_entry[df_entry['datetime'] > sig_time].head(100)
         
         outcome = 'NEUTRAL'
         win_type = None

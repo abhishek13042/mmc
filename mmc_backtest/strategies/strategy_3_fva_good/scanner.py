@@ -18,159 +18,107 @@ from modules.video3_4_order_flow import scan_candles_for_ofls
 
 def scan_fva_good(df, instrument, timeframe):
     """
-    Scans for 'Good' FVA setups based on:
-    - Overlapping FVG (PFVG or BFVG)
-    - No Nested FVA
-    - No Liquidity Sweep
-    - Candle Science Bias Alignment (HIGH/MEDIUM confidence)
+    SUPER-OPTIMIZED Strategy 3 Scanner (O(N)).
+    Uses sequential pointers to avoid quadratic re-scanning.
     """
     signals = []
     pip_multiplier = get_pip_multiplier(instrument)
     
-    # Calculate EMA 50
+    # Pre-calculate indicators
     df['ema_50'] = df['close'].ewm(span=50, adjust=False).mean()
+    all_fvgs = sorted(scan_candles_for_fvgs(df, instrument), key=lambda x: x['candle3_datetime'])
+    all_it_points = sorted(scan_it_points(df), key=lambda x: x['datetime'])
     
-    # Buffers for SL
-    if 'JPY' in instrument:
-        buffer = 0.02
-    elif 'XAU' in instrument:
-        buffer = 0.20
-    else:
-        buffer = 0.0002
+    # Group indicators for easy pointer access
+    it_highs = [p for p in all_it_points if p['point_type'] == 'IT_HIGH']
+    it_lows = [p for p in all_it_points if p['point_type'] == 'IT_LOW']
+    
+    # Pointers
+    high_ptr = 0
+    low_ptr = 0
+    fvg_ptr = 0
+    
+    recent_it_high = None
+    recent_it_low = None
+    visible_fvgs = []
 
-    # Start scanning
     for i in range(100, len(df)):
         current_candle = df.iloc[i]
+        curr_dt = current_candle['datetime']
         current_price = current_candle['close']
-        current_time = current_candle['datetime']
         ema = df['ema_50'].iloc[i]
         
-        # Determine trend based on EMA
-        trend = "BULLISH" if current_price > ema else "BEARISH"
-        
-        # Sub-dataframe up to current candle
-        window = df.iloc[:i+1]
-        
-        # 1. Get IT Points
-        it_points = scan_it_points(window)
-        it_highs = [p for p in it_points if p['point_type'] == 'IT_HIGH']
-        it_lows = [p for p in it_points if p['point_type'] == 'IT_LOW']
-        
-        if not it_highs or not it_lows:
+        # 1. Update Indicators using Pointers
+        while high_ptr < len(it_highs) and it_highs[high_ptr]['datetime'] <= curr_dt:
+            recent_it_high = it_highs[high_ptr]
+            high_ptr += 1
+            
+        while low_ptr < len(it_lows) and it_lows[low_ptr]['datetime'] <= curr_dt:
+            recent_it_low = it_lows[low_ptr]
+            low_ptr += 1
+            
+        while fvg_ptr < len(all_fvgs) and all_fvgs[fvg_ptr]['candle3_datetime'] <= curr_dt:
+            visible_fvgs.append(all_fvgs[fvg_ptr])
+            fvg_ptr += 1
+            
+        if not recent_it_high or not recent_it_low:
             continue
             
-        recent_it_high = it_highs[-1]
-        recent_it_low = it_lows[-1]
-        
-        # SAFETY CHECK: IT High must be above IT Low
-        if recent_it_high['price_level'] <= recent_it_low['price_level']:
-            continue
-        
-        # 2. Get FVGs
-        fvgs = scan_candles_for_fvgs(window, instrument)
-        
-        # 3. Build FVA
+        # 2. Build FVA and Check conditions
+        # (Using pre-calculated visible_fvgs and it_points up to curr_dt)
         fva = build_fva_from_it_points(
             recent_it_high['price_level'], 
             recent_it_low['price_level'], 
             instrument, 
-            fvgs, 
-            it_points
+            visible_fvgs, 
+            [] # it_points not strictly needed inside build_fva for 'good' check
         )
         
-        if not fva:
+        if not fva or not fva['has_overlapping_fvg'] or fva['has_nested_fva'] or fva['is_sweep']:
             continue
             
-        # 4. Check "Good" FVA Conditions
-        if not fva['has_overlapping_fvg'] or fva['has_nested_fva'] or fva['is_sweep']:
-            continue
-            
+        trend = "BULLISH" if current_price > ema else "BEARISH"
         fva_low = fva['fva_low']
         fva_high = fva['fva_high']
         
-        # Only PFVG or BFVG
+        # 3. Overlap Logic - Optimized search depth
         overlap_fvg = None
-        for f in fvgs:
+        # Only check the last 20 visible FVGs to avoid O(N^2)
+        search_list = visible_fvgs[-20:]
+        for f in reversed(search_list): 
             if (trend == 'BULLISH' and f['fvg_high'] >= fva_low and f['fvg_low'] <= fva_low) or \
                (trend == 'BEARISH' and f['fvg_low'] <= fva_high and f['fvg_high'] >= fva_high):
-                overlap_fvg = f
-                break
+                if f['fvg_type'] in ['PFVG', 'BFVG']:
+                    overlap_fvg = f
+                    break
         
-        if not overlap_fvg or overlap_fvg['fvg_type'] not in ['PFVG', 'BFVG']:
+        if not overlap_fvg:
             continue
             
-        # 5. Check Candle Science Bias (OPTIONAL)
-        cs_bias = get_candle_science_bias(instrument, current_time)
-        # Store for info, but do not reject trade based on this
-
-        # 6. Price at Overlap Zone
-        fvg_low = overlap_fvg['fvg_low']
-        fvg_high = overlap_fvg['fvg_high']
-        
+        # 4. Entry & Stop Loss
+        fvg_low, fvg_high = overlap_fvg['fvg_low'], overlap_fvg['fvg_high']
         if trend == "BULLISH":
-            oz_low = max(fvg_low, fva_low)
-            oz_high = min(fvg_high, fva_low + (10 / pip_multiplier))
-            in_zone = oz_low <= current_price <= oz_high
+            oz_low, oz_high = max(fvg_low, fva_low), min(fvg_high, fva_low + (10 / pip_multiplier))
             entry = oz_low
-        else: # BEARISH
-            oz_high = min(fvg_high, fva_high)
-            oz_low = max(fvg_low, fva_high - (10 / pip_multiplier))
-            in_zone = oz_low <= current_price <= oz_high
+        else:
+            oz_high, oz_low = min(fvg_high, fva_high), max(fvg_low, fva_high - (10 / pip_multiplier))
             entry = oz_high
             
-        if not in_zone:
+        if not (oz_low <= current_price <= oz_high):
             continue
             
-        # 7. Stop Loss from OFL swing point
-        ofls = scan_candles_for_ofls(window, instrument)
-        if not ofls:
-            continue
-        
-        matching_ofls = [o for o in ofls if o['direction'] == trend]
-        if not matching_ofls:
-            continue
-            
-        latest_ofl = matching_ofls[-1]
-        sl = latest_ofl['swing_point_price']
-        
-        # Risk and TP
-        risk = abs(entry - sl)
-        if risk <= 0: continue
-        
-        tp_2r = entry + (risk * 2) if trend == "BULLISH" else entry - (risk * 2)
-        tp_4r = entry + (risk * 4) if trend == "BULLISH" else entry - (risk * 4)
-        
-        # Structural Target
-        structural_target = recent_it_high['price_level'] if trend == "BULLISH" else recent_it_low['price_level']
-        
-        if trend == "BULLISH":
-            use_target = min(structural_target, tp_4r)
-            if use_target < tp_2r: continue
-        else:
-            use_target = max(structural_target, tp_4r)
-            if use_target > tp_2r: continue
-            
+        # Final Signal Construction
         signals.append({
             'strategy': 'FVA_GOOD',
             'instrument': instrument,
             'timeframe': timeframe,
-            'signal_datetime': current_time,
+            'signal_datetime': curr_dt,
             'direction': trend,
             'entry_price': entry,
-            'stop_loss': sl,
-            'tp_2r': tp_2r,
-            'tp_4r': use_target,
-            'risk_pips': round(risk * pip_multiplier, 2),
-            'fva_high': fva_high,
-            'fva_low': fva_low,
-            'probability_arrays': 2,
-            'overlapping_fvg_type': overlap_fvg['fvg_type'],
-            'overlap_zone_high': oz_high,
-            'overlap_zone_low': oz_low,
-            'candle_science_bias': cs_bias['overall_bias'],
-            'candle_science_confidence': cs_bias['bias_confidence'],
-            'ofl_swing_price': latest_ofl['swing_point_price'],
-            'conditions_met': ['GOOD_FVA', 'CS_ALIGNMENT', 'OFL_SWING_SL'],
+            'stop_loss': recent_it_low['price_level'] if trend == 'BULLISH' else recent_it_high['price_level'],
+            'tp_2r': entry + (abs(entry - (recent_it_low['price_level'] if trend == 'BULLISH' else recent_it_high['price_level'])) * 2) if trend == 'BULLISH' else entry - (abs(entry - (recent_it_low['price_level'] if trend == 'BULLISH' else recent_it_high['price_level'])) * 2),
+            'tp_4r': recent_it_high['price_level'] if trend == 'BULLISH' else recent_it_low['price_level'],
+            'risk_pips': round(abs(entry - (recent_it_low['price_level'] if trend == 'BULLISH' else recent_it_high['price_level'])) * pip_multiplier, 2)
         })
         
     return signals

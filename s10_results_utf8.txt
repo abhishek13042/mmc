@@ -1,0 +1,43 @@
+﻿
+======================================================================
+   MMC STRATEGY 10 ù TOP-DOWN ARGUMENT SCANNER
+   Source: Arjo Video 12 (Filtering Process)
+======================================================================
+Loading data from: EURUSD1440.csv
+Loading data from: EURUSD240.csv
+Loading data from: EURUSD60.csv
+Loading data from: EURUSD1440.csv
+Loading data from: EURUSD1440.csv
+Loading data from: EURUSD1440.csv
+Loading data from: GBPUSD1440.csv
+Loading data from: GBPUSD240.csv
+Loading data from: GBPUSD60.csv
+Loading data from: GBPUSD1440.csv
+Loading data from: GBPUSD1440.csv
+Loading data from: GBPUSD1440.csv
+Loading data from: XAUUSD1440.csv
+Loading data from: XAUUSD240.csv
+Loading data from: XAUUSD60.csv
+Loading data from: XAUUSD1440.csv
+Loading data from: XAUUSD1440.csv
+Loading data from: XAUUSD1440.csv
+
+RANK  INSTRUMENT   BIAS       STRENGTH   BULL/BEAR GAP
+----------------------------------------------------------------------
+#1    EURUSD       BULLISH    HIGH       19 vs 3
+      RECO: TRADE BULLISH ù all arguments align (19 vs 3)
+      ARGS BULL: DAILY OFL BULLISH (score +5, prob=LOW), 4H OFL BULLISH (score +4, prob=MEDIUM), DAILY CANDLE_SCIENCE BULLISH DISRESPECT_BULLISH (score +5)...
+      ARGS BEAR: 1H OFL BEARISH (score +3, prob=LOW)...
+----------------------------------------------------------------------
+#2    GBPUSD       BULLISH    MEDIUM     19 vs 8
+      RECO: CAUTION ù BULLISH bias but mixed arguments (19 vs 8)
+      ARGS BULL: DAILY OFL BULLISH (score +5, prob=LOW), 4H OFL BULLISH (score +4, prob=LOW), DAILY CANDLE_SCIENCE BULLISH DISRESPECT_BULLISH (score +5)...
+      ARGS BEAR: 1H OFL BEARISH (score +3, prob=LOW), DAILY IT_TREND BEARISH (score +5)...
+----------------------------------------------------------------------
+#3    XAUUSD       BULLISH    LOW        15 vs 7
+      RECO: AVOID ù arguments too balanced (15 vs 7). Wait for clearer alignment.
+      ARGS BULL: DAILY OFL BULLISH (score +5, prob=MEDIUM), DAILY CANDLE_SCIENCE BULLISH DISRESPECT_BULLISH (score +5), DAILY FVG BULLISH BFVG (score +5)...
+      ARGS BEAR: 4H OFL BEARISH (score +4, prob=MEDIUM), 1H OFL BEARISH (score +3, prob=MEDIUM)...
+----------------------------------------------------------------------
+
+[COMPLETE] Use the HIGH strength instruments for your S1-S9 trading today.

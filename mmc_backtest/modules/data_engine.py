@@ -50,7 +50,7 @@ RESAMPLE_RULES = {
     'DAILY': '1D'
 }
 
-DATA_DIR   = 'data/raw'     # where CSVs are stored
+DATA_DIR   = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data', 'raw'))
 CACHE_DIR  = 'data/cache'   # where processed DataFrames cached as pickle
 
 # --- GLOBAL BACKTEST STATE ---
@@ -219,30 +219,41 @@ def load_and_cache(instrument: str, timeframe: str, force_reload: bool = False) 
     _DF_CACHE[cache_key] = df
     return df
 
-def fetch_candles(instrument: str, timeframe: str, start_date=None, end_date=None, n_candles=None) -> pd.DataFrame:
-    """Main data access function used by ALL other modules."""
+_FETCH_CACHE = {}
+
+def fetch_candles(instrument: str, timeframe: str, data_dir: str = None, start_date=None, end_date=None, n_candles=None) -> pd.DataFrame:
+    """Main data access function used by ALL other modules. Optimized with caching."""
+    global DATA_DIR
+    if data_dir:
+        DATA_DIR = data_dir
+
     # 1. Validate instrument
     if instrument not in SUPPORTED_INSTRUMENTS:
         raise ValueError(f"Invalid instrument: {instrument}. Use: {SUPPORTED_INSTRUMENTS}")
         
     # 2. Validate timeframe
-    # Handle aliases (e.g. D1 -> DAILY)
     timeframe_upper = timeframe.upper()
     if timeframe_upper == 'D1': timeframe_upper = 'DAILY'
     
     if timeframe_upper not in VALID_TIMEFRAMES:
         raise ValueError(f"Invalid timeframe: {timeframe}. Use: {VALID_TIMEFRAMES}")
-        
-    # 3. Load from cache
-    df = load_and_cache(instrument, timeframe_upper)
     
-    # 4. Apply date filters
+    # 3. Check Cache
+    cache_key = (instrument, timeframe_upper, DATA_DIR)
+    if cache_key in _FETCH_CACHE:
+        df = _FETCH_CACHE[cache_key].copy()
+    else:
+        # 4. Load from disk
+        df = load_and_cache(instrument, timeframe_upper)
+        _FETCH_CACHE[cache_key] = df.copy()
+    
+    # 5. Apply date filters
     if start_date:
         df = df[df.index >= pd.to_datetime(start_date)]
     if end_date:
         df = df[df.index <= pd.to_datetime(end_date)]
         
-    # BACKTEST PROTECTION: Truncate data at global backtest time if enabled
+    # BACKTEST PROTECTION
     if BACKTEST_MODE and BACKTEST_END_DATE:
         df = df[df.index <= pd.to_datetime(BACKTEST_END_DATE)]
         
@@ -252,10 +263,8 @@ def fetch_candles(instrument: str, timeframe: str, start_date=None, end_date=Non
     if len(df) == 0:
         raise ValueError(f"No data after filtering for {instrument} {timeframe}")
         
-    # 5. Reset and standardize for JSON/Scanners
+    # 6. Reset and standardize for JSON/Scanners
     df.columns = [c.lower() for c in df.columns]
-    # Keep datetime as Timestamp objects for high-performance comparison
-    # but ensure it exists as a column too
     if 'datetime' not in df.columns:
         df = df.reset_index()
         

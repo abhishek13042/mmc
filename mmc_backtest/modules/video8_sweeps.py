@@ -300,11 +300,16 @@ def analyze_sweep(instrument, timeframe, candle_index, df, swing_list, fvg_list)
     # Next 5 candles for comfort check
     next_df = df.iloc[candle_index+1 : candle_index+6]
     
-    # Check against all unmitigated swings
-    for s in swing_list:
+    # Optimized: only check the last 50 swings to avoid O(N^2)
+    search_swings = swing_list[-50:] if len(swing_list) > 50 else swing_list
+    
+    # Check against recent unmitigated swings
+    for s in reversed(search_swings):
         if s.get('is_mitigated', False): continue
+        
         # Only check swings created BEFORE this candle
-        if pd.to_datetime(s['datetime']) >= pd.to_datetime(c['datetime']): continue
+        # Note: both are strings in 'YYYY-MM-DD HH:MM:SS' format, direct comparison works
+        if s['datetime'] >= c['datetime']: continue
         
         swept_level = s['swing_level']
         direction = "BULLISH" if s['swing_type'] == "SWING_LOW" else "BEARISH"

@@ -1,0 +1,2 @@
+run_label,strategy,instrument,timeframe,signal_datetime,direction,entry_price,stop_loss,tp_2r,tp_4r,risk_pips,result,rr_achieved,exit_datetime,pfvg_high,pfvg_low,ofl_probability,ofl_swing_price,fva_high,fva_low,fvg_in_high,fvg_in_low,fvg_out_high,fvg_out_low,candles_to_form_fvg_out,context_target,ofl_1_swing,ofl_2_swing,checklist_passed,conditions_met
+S2 | XAUUSD | M15,FVA_IDEAL,XAUUSD,M15,2026-04-15 05:30:00,BULLISH,4830.61500,4816.34800,4859.14900,4871.16500,142.67000,LOSS,-1.00000,2026-04-15 05:45:00,,,MEDIUM,,,,,,,,,,,,,

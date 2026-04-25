@@ -22,6 +22,7 @@ import csv
 import json
 import traceback
 import importlib
+import pandas as pd
 from datetime import datetime
 from pathlib import Path
 
@@ -215,6 +216,27 @@ def _build_summary_row(strategy_num, strategy_name, instrument, timeframe,
 def run_one(strategy_num, label, instrument, timeframe_label, output_csv_name, call_kwargs):
     reg         = STRATEGY_REGISTRY[strategy_num]
     output_path = RESULTS_DIR / output_csv_name
+    
+    # --- SKIP LOGIC: If already 'OK' in MASTER_SUMMARY, skip ---
+    if MASTER_SUMMARY_PATH.exists():
+        try:
+            summary_df = pd.read_csv(MASTER_SUMMARY_PATH)
+            # Find if this specific run is already 'OK'
+            existing = summary_df[
+                (summary_df['strategy'] == reg['name']) & 
+                (summary_df['instrument'] == instrument) & 
+                (summary_df['timeframe'] == timeframe_label) & 
+                (summary_df['status'] == 'OK')
+            ]
+            if not existing.empty:
+                print(f"  [ALREADY DONE] {label}")
+                # Load stats from existing row for report
+                row = existing.iloc[0].to_dict()
+                all_summary_rows.append(row)
+                return
+        except:
+            pass
+
     print(f"\n  > {label}")
 
     if not reg['import_ok']:
@@ -225,14 +247,15 @@ def run_one(strategy_num, label, instrument, timeframe_label, output_csv_name, c
         all_summary_rows.append(row)
         return
 
+    result = None
     try:
-        result   = reg['fn'](data_dir=str(DATA_DIR), **call_kwargs)
-        if not result:
+        result = reg['fn'](data_dir=str(DATA_DIR), **call_kwargs)
+        if result is None:
             print("    [ERROR] No result returned from backtest function")
             return
 
         # Handle both flat results and nested 'stats' results
-        if 'stats' in result:
+        if isinstance(result, dict) and 'stats' in result:
             result.update(result.pop('stats'))
             
         total    = result.get('total_signals', 0)
@@ -261,7 +284,8 @@ def run_one(strategy_num, label, instrument, timeframe_label, output_csv_name, c
 
     append_to_master_summary(row)
     all_summary_rows.append(row)
-    ALL_BATCH_RESULTS.append(result)
+    if result is not None:
+        ALL_BATCH_RESULTS.append(result)
 
 def _skip(num, name, inst, tf_label, label, out_name, path):
     print(f"\n  > {label}")
@@ -437,7 +461,7 @@ def print_final_summary(best):
         print(f"  {i:<3} {r['run_label']:<40} {str(r['total_signals']):>8} {str(r['wins']):>6} {str(r['losses']):>7} {str(r['win_rate_pct']):>7} {r['status']:>9}")
     print("="*95)
     print(f"  Total:{total} | OK:{ok} | Errors:{errors} | Skipped:{skips}")
-    print("\n── BEST PERFORMING RUN PER STRATEGY ──")
+    print("\n-- BEST PERFORMING RUN PER STRATEGY --")
     for s, row in best.items():
         print(f"  {s:<25} {row['run_label']:<40} WR:{row['win_rate_pct']}% AvgRR:{row['avg_rr']}")
     print(f"\n  MASTER_SUMMARY : {MASTER_SUMMARY_PATH}")

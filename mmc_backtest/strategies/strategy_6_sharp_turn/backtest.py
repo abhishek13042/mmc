@@ -38,17 +38,22 @@ def run_backtest(instrument, context_tf, entry_tf, data_dir=None) -> dict:
         
     candles_to_form_list = []
     
+    # 3. Build Datetime to Index mapping for fast lookup
+    dt_to_idx = {str(dt): idx for idx, dt in enumerate(df_entry['datetime'])}
+    
     for sig in signals:
         # Start simulation from sig_datetime
-        sig_time = pd.to_datetime(sig['signal_datetime'])
-        entry_price = sig['entry_price']
+        sig_dt_str = str(sig['signal_datetime'])
+        if sig_dt_str not in dt_to_idx:
+            continue
+        sig_idx = dt_to_idx[sig_dt_str]
+        # Get candles after signal
+        trade_data = df_entry.iloc[sig_idx + 1 : sig_idx + 101]
+        
+        direction = sig['direction']
         stop_loss = sig['stop_loss']
         tp_2r = sig['tp_2r']
         context_target = sig['context_target']
-        direction = sig['direction']
-        
-        # Get candles after signal
-        trade_data = df_entry[df_entry['datetime'] > sig_time].head(100)
         
         outcome = 'NEUTRAL'
         exit_price = None
