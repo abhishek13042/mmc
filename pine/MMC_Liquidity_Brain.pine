@@ -53,6 +53,7 @@ gViz  = "Visuals"
 drawTgt  = input.bool(true,  "Draw line to the target liquidity", group = gViz)
 showFVG  = input.bool(false, "Show fair value gaps (context)", group = gViz)
 showDash = input.bool(true,  "Show dashboard", group = gViz)
+showWHY  = input.bool(false, "Show WHY reasoning (expand dashboard)", group = gViz)
 dashPos  = input.string("top_right", "Dashboard position", group = gViz,
      options = ["top_right", "top_left", "bottom_right", "bottom_left", "middle_right"])
 
@@ -519,9 +520,9 @@ rangeFav = (drawDir == 1 and inDiscount) or (drawDir == -1 and inPremium)
 alertcondition(oneSided, "Strong HTF confluence", "MMC: both higher timeframes agree on bias")
 
 // ----------------------------------------------------------------------------
-//  DASHBOARD
+//  DASHBOARD  (compact — 7 rows; enable "Show WHY" to expand to 12)
 // ----------------------------------------------------------------------------
-f_dirTxt(_d) => _d == 1 ? "BULLISH ▲" : _d == -1 ? "BEARISH ▼" : "neutral"
+f_dirTxt(_d) => _d == 1 ? "BULL ▲" : _d == -1 ? "BEAR ▼" : "neutral"
 f_dirCol(_d) => _d == 1 ? cUp : _d == -1 ? cDn : cMut
 
 var table dash = na
@@ -531,69 +532,61 @@ if showDash and barstate.islast
          dashPos == "bottom_right" ? position.bottom_right :
          dashPos == "bottom_left" ? position.bottom_left : position.middle_right
     table.delete(dash)
-    dash := table.new(pos, 2, 17, border_width = 1, border_color = color.new(cMut, 70),
+    nRows   = showWHY ? 12 : 7
+    dash    := table.new(pos, 2, nRows, border_width = 1, border_color = color.new(cMut, 70),
          frame_width = 1, frame_color = color.new(cMut, 50))
-    hdr = color.new(#26215C, 0)
+    hdr     = color.new(#26215C, 0)
     drawCol = f_dirCol(drawDir)
 
-    table.cell(dash, 0, 0, "MMC LIQUIDITY BRAIN", text_color = color.white,
-         bgcolor = hdr, text_size = size.normal)
-    table.cell(dash, 1, 0, timeframe.period + " chart", text_color = color.white,
-         bgcolor = hdr, text_size = size.normal)
+    // Row 0 — header
+    table.cell(dash, 0, 0, "MMC BRAIN", text_color = color.white, bgcolor = hdr, text_size = size.small)
+    table.cell(dash, 1, 0, timeframe.period + " · " + (oneSided ? "STRONG" : "weak"),
+         text_color = oneSided ? cUp : cMut, bgcolor = hdr, text_size = size.small)
 
-    table.cell(dash, 0, 1, "HTF 1  (" + htf1 + ")", text_color = cMut)
-    table.cell(dash, 1, 1, f_dirTxt(biasHTF1), text_color = f_dirCol(biasHTF1))
-    table.cell(dash, 0, 2, "HTF 2  (" + htf2 + ")", text_color = cMut)
-    table.cell(dash, 1, 2, f_dirTxt(biasHTF2), text_color = f_dirCol(biasHTF2))
+    // Row 1 — both HTF reads on one line
+    table.cell(dash, 0, 1, "HTF", text_color = cMut, text_size = size.small)
+    table.cell(dash, 1, 1, htf1 + f_arrow(biasHTF1) + "  " + htf2 + f_arrow(biasHTF2),
+         text_color = f_dirCol(biasFinal), text_size = size.small)
 
-    table.cell(dash, 0, 3, "Confluence", text_color = cMut)
-    table.cell(dash, 1, 3, oneSided ? "STRONG (one-sided)" : "weak (mixed)",
-         text_color = oneSided ? cUp : cMut)
+    // Row 2 — live order flow (marks if it opposes HTF bias)
+    table.cell(dash, 0, 2, "Order flow", text_color = cMut, text_size = size.small)
+    table.cell(dash, 1, 2, f_dirTxt(drawDir) + (counterBias ? "  ▶ vs bias" : ""),
+         text_color = drawCol, text_size = size.small)
 
-    table.cell(dash, 0, 4, "HTF bias", text_color = cMut, text_size = size.normal)
-    table.cell(dash, 1, 4, f_dirTxt(biasFinal), text_color = f_dirCol(biasFinal),
-         text_size = size.normal)
+    // Row 3 — MMC context + confidence
+    table.cell(dash, 0, 3, "Context", text_color = cMut, text_size = size.small)
+    table.cell(dash, 1, 3, ctx + "  " + str.tostring(conf) + "%",
+         text_color = counterBias ? cDn : ctx == "FLOD" ? cUp : cMut, text_size = size.small)
 
-    table.cell(dash, 0, 5, "Order flow now", text_color = cMut, text_size = size.normal)
-    table.cell(dash, 1, 5, f_dirTxt(drawDir) + (counterBias ? "  (vs bias)" : ""),
-         text_color = drawCol, text_size = size.normal)
+    // Row 4 — primary draw target + RR (bright when ≥ 2R)
+    tgtTxt = na(targetPx) ? "stand aside" :
+         (targetIsITH ? "▲ ITH " : "▼ ITL ") + str.tostring(targetPx, format.mintick) +
+         (na(rr) ? "" : "  " + str.tostring(rr, "#.0") + "R")
+    tgtCol  = na(targetPx) ? cMut : (not na(rr) and rr >= 2 ? drawCol : color.new(drawCol, 40))
+    table.cell(dash, 0, 4, "DRAW →", text_color = cMut, text_size = size.small)
+    table.cell(dash, 1, 4, tgtTxt, text_color = tgtCol, text_size = size.small)
 
-    table.cell(dash, 0, 6, "Context", text_color = cMut)
-    table.cell(dash, 1, 6, ctx, text_color = counterBias ? cDn :
-         ctx == "FLOD" ? cUp : cMut)
+    // Row 5 — next liquidity pool beyond the primary
+    nextTxt = na(targetNextPx) ? "—" :
+         (targetIsITH ? "▲ ITH " : "▼ ITL ") + str.tostring(targetNextPx, format.mintick)
+    table.cell(dash, 0, 5, "Next liq", text_color = cMut, text_size = size.small)
+    table.cell(dash, 1, 5, nextTxt, text_color = color.new(drawCol, 40), text_size = size.small)
 
-    // ---- WHY section -----------------------------------------------------
-    table.cell(dash, 0, 7, "── WHY ──", text_color = color.white, bgcolor = color.new(cMut, 80))
-    table.cell(dash, 1, 7, "", bgcolor = color.new(cMut, 80))
-    table.cell(dash, 0, 8, "bias", text_color = cMut)
-    table.cell(dash, 1, 8, biasReason, text_color = f_dirCol(biasFinal), text_size = size.small)
-    table.cell(dash, 0, 9, "order flow", text_color = cMut)
-    table.cell(dash, 1, 9, ofReason, text_color = drawCol, text_size = size.small)
-    table.cell(dash, 0, 10, "context", text_color = cMut)
-    table.cell(dash, 1, 10, ctxReason, text_color = cMut, text_size = size.small)
-    table.cell(dash, 0, 11, "target pick", text_color = cMut)
-    table.cell(dash, 1, 11, tgtReason, text_color = cMut, text_size = size.small)
-
-    // ---- decision --------------------------------------------------------
-    tgtTxt = na(targetPx) ? "—" : (targetIsITH ? "ITH ▲ " : "ITL ▼ ") +
-         str.tostring(targetPx, format.mintick)
-    table.cell(dash, 0, 12, "DRAW now → ", text_color = cMut, text_size = size.normal)
-    table.cell(dash, 1, 12, tgtTxt, text_color = drawCol, text_size = size.normal)
-
-    nextTxt = na(targetNextPx) ? "—" : (targetIsITH ? "ITH ▲ " : "ITL ▼ ") +
-         str.tostring(targetNextPx, format.mintick)
-    table.cell(dash, 0, 13, "next liquidity", text_color = cMut)
-    table.cell(dash, 1, 13, nextTxt, text_color = drawCol, text_size = size.small)
-
-    table.cell(dash, 0, 14, "Est. RR", text_color = cMut)
-    table.cell(dash, 1, 14, na(rr) ? "—" : str.tostring(rr, "#.0") + "R",
-         text_color = na(rr) ? cMut : (rr >= 2 ? cUp : cMut))
-
-    table.cell(dash, 0, 15, "Confidence", text_color = cMut, text_size = size.normal)
-    table.cell(dash, 1, 15, str.tostring(conf) + "%",
-         text_color = conf >= 80 ? cUp : conf >= 60 ? color.new(#378ADD, 0) : cMut,
-         text_size = size.normal)
-
-    table.cell(dash, 0, 16, "Range pos", text_color = cMut)
-    table.cell(dash, 1, 16, rangePosTxt + (rangeFav ? "  ✓" : ""),
+    // Row 6 — dealing range position (discount / premium / EQ)
+    table.cell(dash, 0, 6, "Range", text_color = cMut, text_size = size.small)
+    table.cell(dash, 1, 6, rangePosTxt + (rangeFav ? "  ✓" : ""),
          text_color = inPremium ? cDn : inDiscount ? cUp : cMut, text_size = size.small)
+
+    // Rows 7-11 — WHY section (optional, toggle "Show WHY reasoning")
+    if showWHY
+        table.cell(dash, 0, 7, "WHY", text_color = color.white,
+             bgcolor = color.new(cMut, 80), text_size = size.tiny)
+        table.cell(dash, 1, 7, "", bgcolor = color.new(cMut, 80))
+        table.cell(dash, 0, 8, "bias", text_color = cMut, text_size = size.tiny)
+        table.cell(dash, 1, 8, biasReason, text_color = f_dirCol(biasFinal), text_size = size.tiny)
+        table.cell(dash, 0, 9, "flow", text_color = cMut, text_size = size.tiny)
+        table.cell(dash, 1, 9, ofReason, text_color = drawCol, text_size = size.tiny)
+        table.cell(dash, 0, 10, "context", text_color = cMut, text_size = size.tiny)
+        table.cell(dash, 1, 10, ctxReason, text_color = cMut, text_size = size.tiny)
+        table.cell(dash, 0, 11, "target", text_color = cMut, text_size = size.tiny)
+        table.cell(dash, 1, 11, tgtReason, text_color = cMut, text_size = size.tiny)
