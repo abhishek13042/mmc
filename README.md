@@ -1,94 +1,93 @@
-# MMC Backtesting System
+# MMC — Money Making Concepts, as code
 
-An institutional-grade trading simulation engine for validating MMC (Market Maker Cycles) strategies.
+A Python library that converts the 12-video **Money Making Concepts (MMC)** series
+by Arjo Janssens (full transcripts in [`transcripts/`](transcripts/)) into a
+coherent, tested trading framework — **library first, then a backtester on top**.
 
-## Overview
-This system provides a mechanical framework to backtest and analyze the "Big 7" MMC strategies. It is built to handle multi-timeframe alignment, institutional checklist validation, and high-volume batch processing across multiple currency pairs and commodities.
+Every concept maps to code, and every layer is built on the one below it. See
+[`ARCHITECTURE.md`](ARCHITECTURE.md) for the full contract.
 
-## Core Strategies
-1. **S1: OFL Continuation** — Tracking order flow momentum.
-2. **S2: FVA Ideal** — Premium value area entries.
-3. **S3: FVA Good** — Standard value area entries.
-4. **S4: Sweep + OFL** — Liquidity sweeps with order flow confirmation.
-5. **S5: Candle Science** — High-probability candle patterns and structural shifts.
-6. **S6: Sharp Turn** — Rapid reaction entries at context boundaries.
-7. **S7: Order Flow Entry** — The most rigorous setup requiring dual OFL confirmation and a 10-point checklist.
+## Layers (dependency order)
 
-## Getting Started
+| Layer | Package | Transcripts | What it does |
+|-------|---------|-------------|--------------|
+| Data | `mmc.data` | — | Load the raw OHLC CSVs into pandas |
+| Core | `mmc.core` | 01–03 | Swings, Fair Value Gaps, market structure (ITH/ITL, STH/STL), Fair Value Areas, **order flow lags** |
+| Narrative | `mmc.narrative` | 04, 06, 07 | FLOD / ODD / LOD, FVG quality (rejection/perfect/breakaway), FVA quality |
+| Sweeps | `mmc.sweeps` | 08 | Liquidity sweep vs run, order-flow & candle-science sweeps, PCH/PCL |
+| Candle science | `mmc.candle_science` | 05 | Respect / disrespect candles (order flow on a single candle) |
+| Timing | `mmc.timing` | 09 | Time = volatility: sessions / kill zones, news / the big three |
+| Context | `mmc.context` | 10 | Usual / unusual context areas (boundary → first opposing PD array) |
+| Entry | `mmc.entry` | 11 | Sharp turns, order-flow entries, market-maker model, TF alignment, trade management |
+| Top-down | `mmc.topdown` | 12 | Bias/arguments engine, filtering-process vs flow-trader styles, multi-pair ranking |
+| Backtest | `mmc.backtest` | — | Event-driven trade simulation over `Entry` signals → stats + equity curve |
 
-### 1. Prerequisites
-- Python 3.9 or higher.
-- Git (for version control).
+**Recurring core idea:** the market is always either *offering fair value* or
+*seeking liquidity*, and **fair value gaps are superior** — no FVG → no order
+flow lag → no fair value area.
 
-### 2. Installation
-Clone the repository (if not already local) and install dependencies:
-```powershell
-# Create and activate virtual environment (optional but recommended)
-python -m venv venv
-.\venv\Scripts\activate
+## Install
 
-# Install required packages
-pip install -r requirements.txt
+Requires Python ≥ 3.10. From the project root:
+
+```bash
+pip install -e .          # installs mmc + pandas/numpy
+pip install -e ".[dev]"   # also installs pytest
 ```
 
-### 3. Data Setup
-The system expects MT5-exported CSV files in:
-`mmc_backtest/data/raw/`
+The raw market data (EURUSD / GBPUSD / XAUUSD at M5/M15/H1/H4/D1) lives under
+`mmc_backtest/data/raw/` (tab-separated, no header).
 
-**Naming Convention:** `{INSTRUMENT}{TF_MINUTES}.csv`
-- EURUSD1440.csv (Daily)
-- EURUSD60.csv (1H)
-- EURUSD15.csv (15M)
+## Quick start
 
-### 4. Running Backtests
+```python
+from mmc.core.types import Timeframe
+from mmc.data import load
+from mmc.core import analyze
 
-**Run all strategies at once:**
-```powershell
-python mmc_backtest/run_all_strategies.py
+# Load OHLC and run the foundation pass
+df = load("EURUSD", Timeframe.H1)
+structures = analyze(df)          # swings, fvgs, intermediate, short_term, fvas, order_flow_lags
 ```
 
-**Run a specific strategy:**
-```powershell
-# Example: Run Strategy 6 Sharp Turn
-python mmc_backtest/strategies/strategy_6_sharp_turn/backtest.py
+Top-down bias + best pair (transcript 12):
+
+```python
+from mmc.topdown import top_down, best_pair, TraderStyle
+
+result = top_down("XAUUSD", style=TraderStyle.FILTERING_PROCESS, bars=500)
+print(result.narrative)           # direction → narrative → context
+
+pick = best_pair(["EURUSD", "GBPUSD", "XAUUSD"], bars=500)
+print(pick.symbol, pick.result.bias.summary)
 ```
 
-## Reporting & Analytics
-After running a backtest, check the `mmc_backtest/backtest/results/` folder:
-- **Individual CSVs**: Every trade signal with its entry, stop loss, and RR outcome.
-- **MASTER_SUMMARY.csv**: Comparative stats across all instruments and timeframes.
-- **BEST_PERFORMERS.csv**: Automatically identifies the most profitable configurations.
+Backtest a symbol end-to-end (transcript 11 trade rules — 1:2 RR, SL on the lag):
 
-## Backtest Performance Dashboard
+```python
+from mmc.core.types import Timeframe
+from mmc.backtest import backtest_symbol
 
-The following results represent a forensic analysis of over 15 years of institutional data (2009–2026).
+res = backtest_symbol("EURUSD", Timeframe.H1, limit=2000)
+print(res.summary())
+```
 
-### 🏆 Strategy Performance Matrix (Institutional Grade)
+A runnable version of the last example is in [`examples/run_backtest.py`](examples/run_backtest.py).
 
-| Strategy | Instrument | Timeframe | Win Rate | Average RR | Overall Status |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **S1: OFL Continuation** | XAUUSD | H4 | 34.49% | 2.94 | **VALIDATED** |
-| **S3: FVA Good** | GBPUSD | M15 | 40.71% | 64.98* | **EXPONENTIAL** |
-| **S8: IT Retracement** | GBPUSD | H4 | 49.09% | 0.58 | **PRECISION** |
-| **S9: PCH/PCL Sweep** | XAUUSD | M5 | 41.32% | 0.39 | **STABLE** |
+## Tests
 
-*\*Note: Strategy 3 RR reflects deep structural captures from institutional turning points.*
+```bash
+python -m pytest -q
+```
 
-### ⚡ S10 Hybrid Breakdown (Filtered for Accuracy)
-Applying the **Strategy 10 Institutional Bias Filter** to our core engines significantly stabilizes the account curve.
+119 unit tests cover every layer (synthetic, deterministic fixtures plus
+real-data loader checks).
 
-| Timeframe | Hybrid WR% | Avg RR | Signal Frequency | Efficiency |
-| :--- | :--- | :--- | :--- | :--- |
-| **H4 (Swing)** | **32.33%** | **2.67** | ~2/week | **High Stability** |
-| **H1 (Session)** | 31.20% | 2.01 | ~1.5/day | **Cash Cow** |
-| **M15 (Scalp)** | 30.86% | 1.53 | ~1.5/day | **Execution Layer** |
+## Notes
 
-### ⏱️ Trade Frequency & Recency
-- **Data Coverage**: 2009-08-17 to **2026-04-21**
-- **Last Trade Detected**: April 21, 2026 (**4 days ago**)
-- **Avg. Daily Volume**: **3.34 signals/day** (All Pairs/TFs)
-
----
-
-## Contributing
-Please ensure all new strategies follow the module structure: `__init__.py`, `scanner.py`, `backtest.py`, and `visualize.py`.
+- Bars are addressed by **integer position** (`df.iloc` position); detected
+  objects store that as `index`.
+- Polarity is uniform everywhere: **bullish = discount** (buy/continue up),
+  **bearish = premium** (sell/continue down). A swing high is a premium array.
+- The detectors are reference implementations (clarity over micro-optimisation);
+  some are O(n²), so cap bar counts (`limit=`) on large multi-thousand-bar runs.

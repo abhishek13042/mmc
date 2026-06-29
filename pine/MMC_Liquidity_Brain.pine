@@ -1,0 +1,599 @@
+//@version=6
+// =============================================================================
+//  MMC LIQUIDITY BRAIN  —  Next liquidity hunt predictor (ITH / ITL)
+//  Money Making Concepts (Arjo Janssens) — ported from the backtested "brain".
+//
+//  WHAT IT DOES
+//  On ANY timeframe you open (5m, 15m, 1H, 4H, 1D, 1W) it tells you the next
+//  liquidity the market is drawing toward — a buy-side ITH above or a sell-side
+//  ITL below — using TWO higher-timeframe confluence reads for the bias and the
+//  MMC context narrative (FLOD / ODD / Unusual) for the conviction score.
+//
+//  THE CASCADE (same as the Python top-down)
+//    1. DIRECTION  : two higher timeframes vote on bias via market-structure BOS.
+//    2. NARRATIVE  : usual context continues with bias; unusual (failed FVA +
+//                    opposing FVG) flags a reversal that hunts the other side.
+//    3. TARGET     : nearest ITH above (bullish) / ITL below (bearish) = the draw
+//                    on liquidity, with an RR estimate and a confidence %.
+//
+//  NOT financial advice. Research tool. Confirm on your own chart.
+// =============================================================================
+
+indicator("MMC Liquidity Brain", overlay = true, max_lines_count = 500,
+     max_labels_count = 500, max_boxes_count = 500)
+
+// ----------------------------------------------------------------------------
+//  INPUTS
+// ----------------------------------------------------------------------------
+gStr  = "Structure"
+pivLen   = input.int(5, "Swing pivot length", minval = 2, maxval = 50, group = gStr,
+     tooltip = "Bars either side of a pivot. Larger = bigger, cleaner swings.")
+showSw   = input.bool(false, "Show raw swing points", group = gStr)
+showLiq  = input.bool(false, "Show extra liquidity pools (ITH/ITL)", group = gStr,
+     tooltip = "Off by default to keep the chart clean — target, next target and the dealing range already mark the key levels.")
+liqHist  = input.int(2, "Extra pools each side", minval = 1, maxval = 20, group = gStr)
+
+gOF   = "Order flow"
+showOF   = input.bool(true, "Mark order-flow FVGs", group = gOF)
+ofCount  = input.int(3, "Most-recent order-flow FVGs to show", minval = 1, maxval = 15, group = gOF)
+
+gTgt  = "Targets"
+showNext = input.bool(true, "Mark the next liquidity beyond the target", group = gTgt)
+
+gRng  = "Dealing range (fair value area)"
+showRange = input.bool(true, "Mark dealing range: ITL → ITH (premium / EQ / discount)", group = gRng)
+
+gHTF  = "Higher-timeframe confluence"
+autoHTF  = input.bool(true, "Auto-pick the two higher timeframes", group = gHTF,
+     tooltip = "5m→15m+1H · 15m→1H+4H · 1H→4H+1D · 4H→1D+1W · 1D→1W+1M · 1W→1M+3M")
+htf1In   = input.timeframe("60",  "HTF 1 (manual)", group = gHTF)
+htf2In   = input.timeframe("240", "HTF 2 (manual)", group = gHTF)
+
+gViz  = "Visuals"
+drawTgt  = input.bool(true,  "Draw line to the target liquidity", group = gViz)
+showFVG  = input.bool(false, "Show fair value gaps (context)", group = gViz)
+showDash = input.bool(true,  "Show dashboard", group = gViz)
+dashPos  = input.string("top_right", "Dashboard position", group = gViz,
+     options = ["top_right", "top_left", "bottom_right", "bottom_left", "middle_right"])
+
+cUp   = input.color(color.new(#1D9E75, 0), "Bullish / ITH", group = gViz)
+cDn   = input.color(color.new(#E24B4A, 0), "Bearish / ITL", group = gViz)
+cMut  = input.color(color.new(#888780, 0), "Neutral", group = gViz)
+
+// ----------------------------------------------------------------------------
+//  AUTO HIGHER-TIMEFRAME SELECTION  (chart TF -> two HTFs)
+// ----------------------------------------------------------------------------
+chartMin = timeframe.in_seconds(timeframe.period) / 60.0
+
+f_autoHTF(_m) =>
+    string a = na
+    string b = na
+    if _m <= 5
+        a := "15"
+        b := "60"
+    else if _m <= 15
+        a := "60"
+        b := "240"
+    else if _m <= 60
+        a := "240"
+        b := "D"
+    else if _m <= 240
+        a := "D"
+        b := "W"
+    else if _m <= 1440
+        a := "W"
+        b := "M"
+    else
+        a := "M"
+        b := "3M"
+    [a, b]
+
+[autoA, autoB] = f_autoHTF(chartMin)
+htf1 = autoHTF ? autoA : htf1In
+htf2 = autoHTF ? autoB : htf2In
+
+// ----------------------------------------------------------------------------
+//  MARKET-STRUCTURE BIAS  (order-flow BOS)  — used on chart TF and each HTF
+//  Returns +1 bullish / -1 bearish / 0 neutral. Bias flips when price closes
+//  beyond the last confirmed opposing swing (a break of structure).
+// ----------------------------------------------------------------------------
+f_bias(_len) =>
+    ph = ta.pivothigh(_len, _len)
+    pl = ta.pivotlow(_len, _len)
+    var float lastPH = na
+    var float lastPL = na
+    var int   dir    = 0
+    lastPH := not na(ph) ? ph : lastPH
+    lastPL := not na(pl) ? pl : lastPL
+    if not na(lastPH) and close > lastPH
+        dir := 1
+    if not na(lastPL) and close < lastPL
+        dir := -1
+    dir
+
+biasHTF1  = request.security(syminfo.tickerid, htf1, f_bias(pivLen),
+     lookahead = barmerge.lookahead_off)
+biasHTF2  = request.security(syminfo.tickerid, htf2, f_bias(pivLen),
+     lookahead = barmerge.lookahead_off)
+
+// Confluence vote: both HTFs agree => strong (one-sided). Disagree => HTF1 leads.
+htfAgree   = biasHTF1 == biasHTF2 and biasHTF1 != 0
+biasFinal  = htfAgree ? biasHTF1 : biasHTF1 != 0 ? biasHTF1 : biasHTF2
+oneSided   = htfAgree
+
+// ----------------------------------------------------------------------------
+//  SWINGS -> ITH / ITL  (the real liquidity pools)
+//  ITH = swing high with a LOWER swing high on each side (buy-side liquidity).
+//  ITL = swing low  with a HIGHER swing low  on each side (sell-side liquidity).
+// ----------------------------------------------------------------------------
+var float[] shP = array.new_float()   // recent swing-high prices
+var int[]   shB = array.new_int()     // and their bar_index
+var float[] slP = array.new_float()   // recent swing-low prices
+var int[]   slB = array.new_int()
+
+var float[] ithP = array.new_float()  // confirmed ITH prices (buy-side)
+var int[]   ithB = array.new_int()
+var bool[]  ithSwept = array.new_bool()
+var float[] itlP = array.new_float()  // confirmed ITL prices (sell-side)
+var int[]   itlB = array.new_int()
+var bool[]  itlSwept = array.new_bool()
+
+ph = ta.pivothigh(pivLen, pivLen)
+pl = ta.pivotlow(pivLen, pivLen)
+phBar = bar_index - pivLen
+plBar = bar_index - pivLen
+
+f_trim(_arr, _max) =>
+    while array.size(_arr) > _max
+        array.shift(_arr)
+
+if not na(ph)
+    array.push(shP, ph)
+    array.push(shB, phBar)
+    // middle of the last 3 swing highs is an ITH if it's the highest of the three
+    if array.size(shP) >= 3
+        a = array.get(shP, array.size(shP) - 3)
+        m = array.get(shP, array.size(shP) - 2)
+        b = array.get(shP, array.size(shP) - 1)
+        if m > a and m > b
+            array.push(ithP, m)
+            array.push(ithB, array.get(shB, array.size(shB) - 2))
+            array.push(ithSwept, false)
+    f_trim(shP, 400)
+    f_trim(shB, 400)
+    f_trim(ithP, 200)
+    f_trim(ithB, 200)
+    f_trim(ithSwept, 200)
+
+if not na(pl)
+    array.push(slP, pl)
+    array.push(slB, plBar)
+    if array.size(slP) >= 3
+        a = array.get(slP, array.size(slP) - 3)
+        m = array.get(slP, array.size(slP) - 2)
+        b = array.get(slP, array.size(slP) - 1)
+        if m < a and m < b
+            array.push(itlP, m)
+            array.push(itlB, array.get(slB, array.size(slB) - 2))
+            array.push(itlSwept, false)
+    f_trim(slP, 400)
+    f_trim(slB, 400)
+    f_trim(itlP, 200)
+    f_trim(itlB, 200)
+    f_trim(itlSwept, 200)
+
+if showSw and not na(ph)
+    label.new(phBar, ph, "h", color = color.new(cMut, 100),
+         style = label.style_label_down, textcolor = cMut, size = size.tiny)
+if showSw and not na(pl)
+    label.new(plBar, pl, "l", color = color.new(cMut, 100),
+         style = label.style_label_up, textcolor = cMut, size = size.tiny)
+
+// Mark liquidity as swept once price trades through it (the hunt happened).
+f_markSwept(_p, _swept, _isHigh) =>
+    n = array.size(_p)
+    if n > 0
+        for i = 0 to n - 1
+            if not array.get(_swept, i)
+                lvl = array.get(_p, i)
+                if (_isHigh and high > lvl) or (not _isHigh and low < lvl)
+                    array.set(_swept, i, true)
+f_markSwept(ithP, ithSwept, true)
+f_markSwept(itlP, itlSwept, false)
+
+// Draw the most recent unswept liquidity levels as extending lines (last bar).
+var line[] liqLines = array.new_line()
+if showLiq and barstate.islast
+    if array.size(liqLines) > 0
+        for i = 0 to array.size(liqLines) - 1
+            line.delete(array.get(liqLines, i))
+        array.clear(liqLines)
+    drawnH = 0
+    iH = array.size(ithP) - 1
+    while iH >= 0 and drawnH < liqHist
+        if not array.get(ithSwept, iH)
+            lvl = array.get(ithP, iH)
+            ln = line.new(array.get(ithB, iH), lvl, bar_index + 3, lvl,
+                 color = color.new(cUp, 35), width = 1, style = line.style_dotted)
+            array.push(liqLines, ln)
+            drawnH += 1
+        iH -= 1
+    drawnL = 0
+    iL = array.size(itlP) - 1
+    while iL >= 0 and drawnL < liqHist
+        if not array.get(itlSwept, iL)
+            lvl = array.get(itlP, iL)
+            ln = line.new(array.get(itlB, iL), lvl, bar_index + 3, lvl,
+                 color = color.new(cDn, 35), width = 1, style = line.style_dotted)
+            array.push(liqLines, ln)
+            drawnL += 1
+        iL -= 1
+
+// ----------------------------------------------------------------------------
+//  NEAREST UNSWEPT LIQUIDITY  (the draw)
+// ----------------------------------------------------------------------------
+// Nearest unswept level strictly above a floor (for primary + next targets).
+f_nextAbove(_p, _swept, _floor) =>
+    float best = na
+    n = array.size(_p)
+    if n > 0
+        for i = 0 to n - 1
+            lvl = array.get(_p, i)
+            if not array.get(_swept, i) and lvl > _floor
+                if na(best) or lvl < best
+                    best := lvl
+    best
+
+f_nextBelow(_p, _swept, _ceil) =>
+    float best = na
+    n = array.size(_p)
+    if n > 0
+        for i = 0 to n - 1
+            lvl = array.get(_p, i)
+            if not array.get(_swept, i) and lvl < _ceil
+                if na(best) or lvl > best
+                    best := lvl
+    best
+
+ithAbove = f_nextAbove(ithP, ithSwept, close)              // primary buy-side draw
+itlBelow = f_nextBelow(itlP, itlSwept, close)              // primary sell-side draw
+ithNext  = na(ithAbove) ? na : f_nextAbove(ithP, ithSwept, ithAbove)  // next ITH beyond
+itlNext  = na(itlBelow) ? na : f_nextBelow(itlP, itlSwept, itlBelow)  // next ITL beyond
+
+// ----------------------------------------------------------------------------
+//  FAIR VALUE GAPS  (context defense / narrative)
+//  Bullish FVG: gap [high[2], low[0]] when high[2] < low[0].
+//  Bearish FVG: gap [high[0], low[2]] when low[2]  > high[0].
+// ----------------------------------------------------------------------------
+bullFVG = high[2] < low[0]
+bearFVG = low[2]  > high[0]
+var int lastBullFVGbar = na
+var int lastBearFVGbar = na
+lastBullFVGbar := bullFVG ? bar_index : lastBullFVGbar
+lastBearFVGbar := bearFVG ? bar_index : lastBearFVGbar
+
+if showFVG and bullFVG
+    box.new(bar_index - 2, low[0], bar_index, high[2], border_color = color.new(cUp, 70),
+         bgcolor = color.new(cUp, 90))
+if showFVG and bearFVG
+    box.new(bar_index - 2, low[2], bar_index, high[0], border_color = color.new(cDn, 70),
+         bgcolor = color.new(cDn, 90))
+
+// Fresh same-direction FVG within the last ~12 bars = FLOD defense present.
+freshBull = not na(lastBullFVGbar) and (bar_index - lastBullFVGbar) <= 12
+freshBear = not na(lastBearFVGbar) and (bar_index - lastBearFVGbar) <= 12
+
+// ----------------------------------------------------------------------------
+//  ORDER-FLOW FVGs  (MMC "order flow lag": swing -> displacement FVG)
+//  A bullish lag = a swing low followed by a bullish FVG (price displaced up,
+//  leaving an imbalance). We record the FVG of each lag and box the most recent
+//  few — they are the institutional footprints that build the bias.
+// ----------------------------------------------------------------------------
+var int[]   ofBar = array.new_int()    // FVG left bar (candle 1 of the gap)
+var float[] ofTop = array.new_float()  // FVG top edge
+var float[] ofBot = array.new_float()  // FVG bottom edge
+var int[]   ofDir = array.new_int()    // +1 bullish, -1 bearish
+
+if bullFVG and array.size(slB) > 0
+    sB = array.get(slB, array.size(slB) - 1)
+    if bar_index - sB <= pivLen * 6          // FVG must follow a recent swing low
+        array.push(ofBar, bar_index - 2)
+        array.push(ofTop, low[0])            // bullish FVG: [high[2], low[0]]
+        array.push(ofBot, high[2])
+        array.push(ofDir, 1)
+        f_trim(ofBar, 120)
+        f_trim(ofTop, 120)
+        f_trim(ofBot, 120)
+        f_trim(ofDir, 120)
+
+if bearFVG and array.size(shB) > 0
+    sB = array.get(shB, array.size(shB) - 1)
+    if bar_index - sB <= pivLen * 6          // FVG must follow a recent swing high
+        array.push(ofBar, bar_index - 2)
+        array.push(ofTop, low[2])            // bearish FVG: [high[0], low[2]]
+        array.push(ofBot, high[0])
+        array.push(ofDir, -1)
+        f_trim(ofBar, 120)
+        f_trim(ofTop, 120)
+        f_trim(ofBot, 120)
+        f_trim(ofDir, 120)
+
+// Box the most recent order-flow FVGs (last bar only, count = ofCount).
+var box[]   ofBoxes = array.new_box()
+var label[] ofLabs  = array.new_label()
+if showOF and barstate.islast
+    if array.size(ofBoxes) > 0
+        for i = 0 to array.size(ofBoxes) - 1
+            box.delete(array.get(ofBoxes, i))
+        array.clear(ofBoxes)
+    if array.size(ofLabs) > 0
+        for i = 0 to array.size(ofLabs) - 1
+            label.delete(array.get(ofLabs, i))
+        array.clear(ofLabs)
+    drawn = 0
+    i = array.size(ofDir) - 1
+    while i >= 0 and drawn < ofCount
+        d   = array.get(ofDir, i)
+        col = d == 1 ? cUp : cDn
+        bx = box.new(array.get(ofBar, i), array.get(ofTop, i), bar_index,
+             array.get(ofBot, i), border_color = color.new(col, 35),
+             bgcolor = color.new(col, 80))
+        array.push(ofBoxes, bx)
+        lb = label.new(array.get(ofBar, i), array.get(ofTop, i),
+             d == 1 ? "OFL ▲" : "OFL ▼", color = color.new(col, 100),
+             textcolor = col, style = d == 1 ? label.style_label_up : label.style_label_down,
+             size = size.tiny)
+        array.push(ofLabs, lb)
+        drawn += 1
+        i -= 1
+
+// ----------------------------------------------------------------------------
+//  ORDER-FLOW DIRECTION  (MMC short-term-high/low protection — transcript 03)
+//  A bearish lag (swing high + bearish FVG) makes that swing high a *protected*
+//  short-term high: order flow stays BEARISH — and the market keeps delivering
+//  to the sell-side ITL — for as long as that STH holds. It only FLIPS bullish
+//  when price trades back ABOVE the protected STH (a break of structure). The
+//  mirror holds for protected short-term lows / bullish order flow / buy-side.
+// ----------------------------------------------------------------------------
+var float protSTH = na     // protected short-term high (intact => bearish order flow)
+var float protSTL = na     // protected short-term low  (intact => bullish order flow)
+var int   ofState = 0      // +1 bullish, -1 bearish
+
+// Each lag trails its protected short-term level — but does NOT by itself flip
+// order flow (a pullback FVG is not a reversal; transcript 03 ~7:40).
+if bearFVG and array.size(shP) > 0
+    protSTH := array.get(shP, array.size(shP) - 1)   // the swing high before this FVG
+if bullFVG and array.size(slP) > 0
+    protSTL := array.get(slP, array.size(slP) - 1)
+// Order flow SWITCHES only when a protected short-term level is broken (BOS):
+// price trading back above a protected STH = bullish; below a protected STL = bearish.
+if not na(protSTH) and close > protSTH
+    ofState := 1
+if not na(protSTL) and close < protSTL
+    ofState := -1
+// The level whose break would flip the order flow (the actionable BOS level).
+flipLevel = ofState == -1 ? protSTH : ofState == 1 ? protSTL : na
+
+// ----------------------------------------------------------------------------
+//  THE BRAIN DECISION  — direction, target, context, confidence
+// ----------------------------------------------------------------------------
+//  The IMMEDIATE draw follows the most recent ORDER FLOW, not just the HTF bias.
+//  In a clean trend order flow == bias (continuation). In a pullback / unusual
+//  context the order flow flips and the market hunts the OPPOSITE liquidity
+//  first (MMC: "the market is seeking liquidity"). The HTF bias stays as the
+//  bigger picture; the target tracks where price is actually being drawn now.
+// ----------------------------------------------------------------------------
+drawDir  = ofState != 0 ? ofState : biasFinal     // immediate draw = live order flow
+withBias    = drawDir == biasFinal and biasFinal != 0
+counterBias = biasFinal != 0 and drawDir != 0 and drawDir != biasFinal
+
+targetIsITH = drawDir == 1
+float targetPx = targetIsITH ? ithAbove : itlBelow
+float stopPx   = targetIsITH ? itlBelow : ithAbove   // opposite pool = invalidation
+
+// Context label + confidence (MMC narrative tiers).
+string ctx = "—"
+int    conf = 0
+freshDraw = drawDir == 1 ? freshBull : drawDir == -1 ? freshBear : false
+if drawDir != 0
+    ctx := counterBias ? "REVERSAL " + (targetIsITH ? "▲" : "▼") : freshDraw ? "FLOD" : "LOD"
+    conf := counterBias ? (oneSided ? 70 : 58) : (oneSided ? 80 : 55) + (freshDraw ? 8 : 0)
+    conf := int(math.min(conf, 95))
+
+// The NEXT liquidity beyond the primary target, same direction.
+float targetNextPx = targetIsITH ? ithNext : itlNext
+
+// RR estimate from current price.
+float rr = na
+if not na(targetPx) and not na(stopPx)
+    risk = math.abs(close - stopPx)
+    rr := risk > 0 ? math.abs(targetPx - close) / risk : na
+
+// ----------------------------------------------------------------------------
+//  WHY — the reasoning the brain used (shown in the dashboard)
+// ----------------------------------------------------------------------------
+f_arrow(_d) => _d == 1 ? "▲" : _d == -1 ? "▼" : "–"
+biasReason = htf1 + f_arrow(biasHTF1) + " + " + htf2 + f_arrow(biasHTF2) +
+     (oneSided ? "  agree" : "  conflict")
+ofReason = ofState == 0 ? "no order flow yet — using HTF bias" :
+     (ofState == -1 ? "STHs holding ▼ — sell-side draw" : "STLs holding ▲ — buy-side draw") +
+     (withBias ? "  (with bias)" : "  (vs HTF)")
+ctxReason = counterBias ? "order flow opposes HTF — seeking " + (targetIsITH ? "ITH first" : "ITL first") :
+     ctx == "FLOD" ? "fresh FVG = first defense (FLOD)" :
+     ctx == "LOD" ? "swing-only draw (LOD)" : "no draw yet"
+tgtReason = drawDir == 0 ? "no draw — stand aside" :
+     na(targetPx) ? "no unswept liquidity that way" :
+     "nearest unswept " + (targetIsITH ? "ITH above" : "ITL below")
+
+// ----------------------------------------------------------------------------
+//  TARGET LINE + LABEL
+// ----------------------------------------------------------------------------
+var line  tgtLine = na
+var label tgtLab  = na
+line.delete(tgtLine)
+label.delete(tgtLab)
+if drawTgt and not na(targetPx) and drawDir != 0
+    col = targetIsITH ? cUp : cDn
+    tgtLine := line.new(bar_index, targetPx, bar_index + 8, targetPx, color = col,
+         width = 2, style = line.style_solid)
+    side = targetIsITH ? "▲ TARGET ITH" : "▼ TARGET ITL"
+    txt  = (counterBias ? "REV " : "") + side + " " + str.tostring(targetPx, format.mintick) +
+         (na(rr) ? "" : " · " + str.tostring(rr, "#.0") + "R") + " · " + str.tostring(conf) + "%"
+    tgtLab := label.new(bar_index + 8, targetPx, txt, color = color.new(col, 85),
+         textcolor = col, style = label.style_label_left, size = size.normal)
+
+// The next liquidity beyond the primary (dashed, fainter).
+var line  nextLine = na
+var label nextLab  = na
+line.delete(nextLine)
+label.delete(nextLab)
+if showNext and not na(targetNextPx) and drawDir != 0
+    col2 = targetIsITH ? cUp : cDn
+    nextLine := line.new(bar_index, targetNextPx, bar_index + 8, targetNextPx,
+         color = color.new(col2, 45), width = 1, style = line.style_dashed)
+    nextLab := label.new(bar_index + 8, targetNextPx,
+         "next " + (targetIsITH ? "ITH " : "ITL ") + str.tostring(targetNextPx, format.mintick),
+         color = color.new(col2, 100), textcolor = color.new(col2, 25),
+         style = label.style_label_left, size = size.small)
+
+// The order-flow FLIP level: break it and the hunt direction switches (MMC BOS).
+var line  flipLine = na
+var label flipLab  = na
+line.delete(flipLine)
+label.delete(flipLab)
+if showOF and not na(flipLevel) and ofState != 0
+    fcol = ofState == 1 ? cUp : cDn
+    flipLine := line.new(bar_index - 30, flipLevel, bar_index + 4, flipLevel,
+         color = color.new(cMut, 25), width = 1, style = line.style_dashed)
+    flipLab := label.new(bar_index + 4, flipLevel,
+         (ofState == -1 ? "OF flip ▲ " : "OF flip ▼ ") + str.tostring(flipLevel, format.mintick),
+         color = color.new(cMut, 100), textcolor = cMut,
+         style = label.style_label_left, size = size.small)
+
+// ----------------------------------------------------------------------------
+//  DEALING RANGE  (MMC fair value area: ITL -> ITH — transcript 02 ~12:13)
+//  Marked, not filled: range high (premium boundary), equilibrium (50%), range
+//  low (discount boundary). Above EQ = premium (sell from); below = discount
+//  (buy from). Price drawn toward the opposite extreme of where it sits.
+// ----------------------------------------------------------------------------
+rangeHigh = array.size(ithP) > 0 ? array.get(ithP, array.size(ithP) - 1) : na
+rangeLow  = array.size(itlP) > 0 ? array.get(itlP, array.size(itlP) - 1) : na
+hasRange  = not na(rangeHigh) and not na(rangeLow) and rangeHigh > rangeLow
+eq         = hasRange ? (rangeHigh + rangeLow) / 2 : na
+inPremium  = hasRange and close > eq
+inDiscount = hasRange and close < eq
+rngLeftH = array.size(ithB) > 0 ? array.get(ithB, array.size(ithB) - 1) : bar_index
+rngLeftL = array.size(itlB) > 0 ? array.get(itlB, array.size(itlB) - 1) : bar_index
+rngLeft  = math.min(rngLeftH, rngLeftL)
+
+var line  rhLine = na
+var line  eqLine = na
+var line  rlLine = na
+var label rhLab  = na
+var label eqLab  = na
+var label rlLab  = na
+line.delete(rhLine)
+line.delete(eqLine)
+line.delete(rlLine)
+label.delete(rhLab)
+label.delete(eqLab)
+label.delete(rlLab)
+if showRange and barstate.islast and hasRange
+    rhLine := line.new(rngLeft, rangeHigh, bar_index, rangeHigh, color = color.new(cDn, 25), width = 1)
+    eqLine := line.new(rngLeft, eq, bar_index, eq, color = color.new(cMut, 35), width = 1, style = line.style_dashed)
+    rlLine := line.new(rngLeft, rangeLow, bar_index, rangeLow, color = color.new(cUp, 25), width = 1)
+    // Range labels sit at the LEFT start of the range, so they never collide
+    // with the target / next / flip labels stacked on the right edge.
+    rhLab := label.new(rngLeft, rangeHigh, "premium · RH " + str.tostring(rangeHigh, format.mintick),
+         color = color.new(cDn, 100), textcolor = cDn, style = label.style_label_right, size = size.small)
+    eqLab := label.new(rngLeft, eq, "EQ " + str.tostring(eq, format.mintick),
+         color = color.new(cMut, 100), textcolor = cMut, style = label.style_label_right, size = size.small)
+    rlLab := label.new(rngLeft, rangeLow, "discount · RL " + str.tostring(rangeLow, format.mintick),
+         color = color.new(cUp, 100), textcolor = cUp, style = label.style_label_right, size = size.small)
+
+// Range position + whether it favours the current draw (buy discount / sell premium).
+rangePosTxt = not hasRange ? "—" : inPremium ? "PREMIUM (sell)" : inDiscount ? "DISCOUNT (buy)" : "at EQ"
+rangeFav = (drawDir == 1 and inDiscount) or (drawDir == -1 and inPremium)
+
+// Alert when a brand-new target is in play with strong confluence.
+alertcondition(oneSided, "Strong HTF confluence", "MMC: both higher timeframes agree on bias")
+
+// ----------------------------------------------------------------------------
+//  DASHBOARD
+// ----------------------------------------------------------------------------
+f_dirTxt(_d) => _d == 1 ? "BULLISH ▲" : _d == -1 ? "BEARISH ▼" : "neutral"
+f_dirCol(_d) => _d == 1 ? cUp : _d == -1 ? cDn : cMut
+
+var table dash = na
+if showDash and barstate.islast
+    pos = dashPos == "top_right" ? position.top_right :
+         dashPos == "top_left" ? position.top_left :
+         dashPos == "bottom_right" ? position.bottom_right :
+         dashPos == "bottom_left" ? position.bottom_left : position.middle_right
+    table.delete(dash)
+    dash := table.new(pos, 2, 17, border_width = 1, border_color = color.new(cMut, 70),
+         frame_width = 1, frame_color = color.new(cMut, 50))
+    hdr = color.new(#26215C, 0)
+    drawCol = f_dirCol(drawDir)
+
+    table.cell(dash, 0, 0, "MMC LIQUIDITY BRAIN", text_color = color.white,
+         bgcolor = hdr, text_size = size.normal)
+    table.cell(dash, 1, 0, timeframe.period + " chart", text_color = color.white,
+         bgcolor = hdr, text_size = size.normal)
+
+    table.cell(dash, 0, 1, "HTF 1  (" + htf1 + ")", text_color = cMut)
+    table.cell(dash, 1, 1, f_dirTxt(biasHTF1), text_color = f_dirCol(biasHTF1))
+    table.cell(dash, 0, 2, "HTF 2  (" + htf2 + ")", text_color = cMut)
+    table.cell(dash, 1, 2, f_dirTxt(biasHTF2), text_color = f_dirCol(biasHTF2))
+
+    table.cell(dash, 0, 3, "Confluence", text_color = cMut)
+    table.cell(dash, 1, 3, oneSided ? "STRONG (one-sided)" : "weak (mixed)",
+         text_color = oneSided ? cUp : cMut)
+
+    table.cell(dash, 0, 4, "HTF bias", text_color = cMut, text_size = size.normal)
+    table.cell(dash, 1, 4, f_dirTxt(biasFinal), text_color = f_dirCol(biasFinal),
+         text_size = size.normal)
+
+    table.cell(dash, 0, 5, "Order flow now", text_color = cMut, text_size = size.normal)
+    table.cell(dash, 1, 5, f_dirTxt(drawDir) + (counterBias ? "  (vs bias)" : ""),
+         text_color = drawCol, text_size = size.normal)
+
+    table.cell(dash, 0, 6, "Context", text_color = cMut)
+    table.cell(dash, 1, 6, ctx, text_color = counterBias ? cDn :
+         ctx == "FLOD" ? cUp : cMut)
+
+    // ---- WHY section -----------------------------------------------------
+    table.cell(dash, 0, 7, "── WHY ──", text_color = color.white, bgcolor = color.new(cMut, 80))
+    table.cell(dash, 1, 7, "", bgcolor = color.new(cMut, 80))
+    table.cell(dash, 0, 8, "bias", text_color = cMut)
+    table.cell(dash, 1, 8, biasReason, text_color = f_dirCol(biasFinal), text_size = size.small)
+    table.cell(dash, 0, 9, "order flow", text_color = cMut)
+    table.cell(dash, 1, 9, ofReason, text_color = drawCol, text_size = size.small)
+    table.cell(dash, 0, 10, "context", text_color = cMut)
+    table.cell(dash, 1, 10, ctxReason, text_color = cMut, text_size = size.small)
+    table.cell(dash, 0, 11, "target pick", text_color = cMut)
+    table.cell(dash, 1, 11, tgtReason, text_color = cMut, text_size = size.small)
+
+    // ---- decision --------------------------------------------------------
+    tgtTxt = na(targetPx) ? "—" : (targetIsITH ? "ITH ▲ " : "ITL ▼ ") +
+         str.tostring(targetPx, format.mintick)
+    table.cell(dash, 0, 12, "DRAW now → ", text_color = cMut, text_size = size.normal)
+    table.cell(dash, 1, 12, tgtTxt, text_color = drawCol, text_size = size.normal)
+
+    nextTxt = na(targetNextPx) ? "—" : (targetIsITH ? "ITH ▲ " : "ITL ▼ ") +
+         str.tostring(targetNextPx, format.mintick)
+    table.cell(dash, 0, 13, "next liquidity", text_color = cMut)
+    table.cell(dash, 1, 13, nextTxt, text_color = drawCol, text_size = size.small)
+
+    table.cell(dash, 0, 14, "Est. RR", text_color = cMut)
+    table.cell(dash, 1, 14, na(rr) ? "—" : str.tostring(rr, "#.0") + "R",
+         text_color = na(rr) ? cMut : (rr >= 2 ? cUp : cMut))
+
+    table.cell(dash, 0, 15, "Confidence", text_color = cMut, text_size = size.normal)
+    table.cell(dash, 1, 15, str.tostring(conf) + "%",
+         text_color = conf >= 80 ? cUp : conf >= 60 ? color.new(#378ADD, 0) : cMut,
+         text_size = size.normal)
+
+    table.cell(dash, 0, 16, "Range pos", text_color = cMut)
+    table.cell(dash, 1, 16, rangePosTxt + (rangeFav ? "  ✓" : ""),
+         text_color = inPremium ? cDn : inDiscount ? cUp : cMut, text_size = size.small)
