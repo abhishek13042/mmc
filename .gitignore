@@ -31,6 +31,10 @@ out_*.txt
 batch_log*.txt
 *.log
 
+# Transcript tool — large downloads, generated outputs
+transcribe/downloads/
+transcribe/transcripts/
+
 # Editor / OS
 .vscode/
 .idea/
