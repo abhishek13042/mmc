@@ -33,9 +33,11 @@ from mmc.core import (
     SwingPoint,
     SwingType,
     Zone,
+    fair_value_areas,
     find_fvgs,
     find_order_flow_lags,
     find_swings,
+    intermediate_term_points,
     mark_mitigation,
 )
 from mmc.narrative import decompose_lag
@@ -80,6 +82,11 @@ def find_context_areas(
     if fvgs is None:
         fvgs = find_fvgs(df)
         mark_mitigation(df, fvgs)
+    if fvas is None:
+        # Needed so decompose_lag can attach an FVA and emit ODD context.
+        # Without this, lag.fva stays None and every lag collapses to FLOD
+        # (the S4 ODD "zero trades" bug — see ANALYSIS.md).
+        fvas = fair_value_areas(intermediate_term_points(swings))
 
     areas: List[ContextArea] = []
 

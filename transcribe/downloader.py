@@ -26,6 +26,6 @@ def download_playlist(url: str, out_dir: Path) -> list[Path]:
             "--ignore-errors",
             url,
         ],
-        check=True,
+        check=False,   # --ignore-errors handles individual failures; don't crash on private videos
     )
     return sorted(out_dir.glob("*.mp3"))

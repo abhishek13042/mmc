@@ -26,6 +26,12 @@ htmlcov/
 data/cache/
 *.pkl
 
+# Brain training run artifacts (regenerable; pkl bases are large)
+mmc/brain/weights/_base/
+mmc/brain/weights/_cache/
+mmc/brain/weights/_pid.txt
+mmc/brain/weights/_manifest.json
+
 # Scratch / run outputs
 out_*.txt
 batch_log*.txt
