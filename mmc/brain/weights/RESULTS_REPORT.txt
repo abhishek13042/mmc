@@ -1,0 +1,195 @@
+==============================================================================
+  MMC BRAIN v2 — FULL TRAINING RESULTS  (perceptron, 100k-bar data)
+  72 models  |  3 pairs x 4 timeframe combos x 6 take-profit targets
+==============================================================================
+
+Metric key:
+  WR    = win rate on the held-out test split (unseen data)
+  avgRR = average realised reward:risk of the take-profit
+  expR  = EXPECTANCY, R per trade = WR*avgRR - (1-WR)*1   <-- the key number
+  PF    = profit factor = gross win R / gross loss R
+  setups/trades = total labelled setups / trades the model chose to take
+
+------------------------------------------------------------------------------
+  FULL RESULTS — every model
+------------------------------------------------------------------------------
+
+  pair    combo    TP target            WR  avgRR    expR     PF  setups  trades
+  --------------------------------------------------------------------------
+  EURUSD  H4_H1    2R fixed          46.3%   2.00  +0.389   1.73   18637    1004
+  EURUSD  H4_H1    3R fixed          42.5%   3.00  +0.700   2.22   18615     779
+  EURUSD  H4_H1    4R fixed          38.9%   4.00  +0.944   2.54   18589     728
+  EURUSD  H4_H1    short-term H/L    45.3%   1.57  +0.064   1.12    3859     245
+  EURUSD  H4_H1    interm. H/L       46.9%   1.73  +0.164   1.31    4809     294
+  EURUSD  H4_H1    liquidity pool    34.4%   4.25  +0.294   1.45    1784     125
+  EURUSD  H1_M15   2R fixed          44.0%   2.00  +0.319   1.57   21223    1381
+  EURUSD  H1_M15   3R fixed          38.8%   3.00  +0.551   1.90   21212    1295
+  EURUSD  H1_M15   4R fixed          37.8%   4.00  +0.889   2.43   21191    1117
+  EURUSD  H1_M15   short-term H/L    43.4%   1.49  +0.055   1.10    4759     334
+  EURUSD  H1_M15   interm. H/L       46.5%   1.58  +0.142   1.27    6362     411
+  EURUSD  H1_M15   liquidity pool    10.3%   5.10  -0.550   0.39    1077      68
+  EURUSD  M15_M5   2R fixed          45.3%   2.00  +0.360   1.66   23002    1317
+  EURUSD  M15_M5   3R fixed          42.0%   3.00  +0.679   2.17   22991    1103
+  EURUSD  M15_M5   4R fixed          38.0%   4.00  +0.898   2.45   22981     880
+  EURUSD  M15_M5   short-term H/L    51.4%   1.15  +0.109   1.22    5472     278
+  EURUSD  M15_M5   interm. H/L       48.7%   1.38  +0.107   1.21    7382     474
+  EURUSD  M15_M5   liquidity pool    25.0%   4.33  -0.012   0.98     833      40
+  EURUSD  H4_M15   2R fixed          44.7%   2.00  +0.340   1.61   21223    1428
+  EURUSD  H4_M15   3R fixed          39.4%   3.00  +0.574   1.95   21212    1306
+  EURUSD  H4_M15   4R fixed          39.3%   4.00  +0.965   2.59   21191    1013
+  EURUSD  H4_M15   short-term H/L    45.8%   1.40  +0.091   1.17    4759     297
+  EURUSD  H4_M15   interm. H/L       48.2%   1.48  +0.179   1.34    6362     384
+  EURUSD  H4_M15   liquidity pool    11.0%   4.93  -0.513   0.42    1077      73
+
+  pair    combo    TP target            WR  avgRR    expR     PF  setups  trades
+  --------------------------------------------------------------------------
+  GBPUSD  H4_H1    2R fixed          44.8%   2.00  +0.345   1.62   18483     997
+  GBPUSD  H4_H1    3R fixed          43.7%   3.00  +0.747   2.33   18468     776
+  GBPUSD  H4_H1    4R fixed          40.7%   4.00  +1.035   2.75   18445     629
+  GBPUSD  H4_H1    short-term H/L    42.9%   1.44  -0.059   0.90    3908     252
+  GBPUSD  H4_H1    interm. H/L       39.8%   1.54  -0.126   0.79    4680     284
+  GBPUSD  H4_H1    liquidity pool    29.4%   4.22  +0.038   1.05    1709     109
+  GBPUSD  H1_M15   2R fixed          45.6%   2.00  +0.367   1.68   20979    1051
+  GBPUSD  H1_M15   3R fixed          42.0%   3.00  +0.682   2.18   20966     930
+  GBPUSD  H1_M15   4R fixed          40.5%   4.00  +1.024   2.72   20952     850
+  GBPUSD  H1_M15   short-term H/L    48.0%   1.39  +0.186   1.36    4526     229
+  GBPUSD  H1_M15   interm. H/L       46.5%   1.25  +0.002   1.00    6009     301
+  GBPUSD  H1_M15   liquidity pool    25.9%   3.81  -0.192   0.74     997      58
+  GBPUSD  M15_M5   2R fixed          43.4%   2.00  +0.303   1.54   22745    1174
+  GBPUSD  M15_M5   3R fixed          37.4%   3.00  +0.496   1.79   22733    1302
+  GBPUSD  M15_M5   4R fixed          36.0%   4.00  +0.800   2.25   22707    1072
+  GBPUSD  M15_M5   short-term H/L    39.4%   1.38  -0.188   0.69    4886     335
+  GBPUSD  M15_M5   interm. H/L       40.6%   1.41  -0.101   0.83    6709     389
+  GBPUSD  M15_M5   liquidity pool    14.7%   5.92  -0.360   0.58     740      34
+  GBPUSD  H4_M15   2R fixed          43.6%   2.00  +0.307   1.54   20979    1239
+  GBPUSD  H4_M15   3R fixed          42.2%   3.00  +0.689   2.19   20966     976
+  GBPUSD  H4_M15   4R fixed          41.6%   4.00  +1.079   2.85   20952     801
+  GBPUSD  H4_M15   short-term H/L    45.3%   1.41  +0.092   1.17    4526     265
+  GBPUSD  H4_M15   interm. H/L       45.1%   1.24  -0.018   0.97    6009     324
+  GBPUSD  H4_M15   liquidity pool    21.9%   4.16  -0.160   0.80     997      64
+
+  pair    combo    TP target            WR  avgRR    expR     PF  setups  trades
+  --------------------------------------------------------------------------
+  XAUUSD  H4_H1    2R fixed          47.0%   2.00  +0.412   1.78   18761    1086
+  XAUUSD  H4_H1    3R fixed          42.2%   3.00  +0.688   2.19   18738    1024
+  XAUUSD  H4_H1    4R fixed          37.2%   4.00  +0.862   2.37   18719     975
+  XAUUSD  H4_H1    short-term H/L    41.1%   2.29  +0.229   1.39    5025     353
+  XAUUSD  H4_H1    interm. H/L       43.3%   2.24  +0.243   1.43    6030     411
+  XAUUSD  H4_H1    liquidity pool    38.1%   3.27  +0.349   1.56    4294     320
+  XAUUSD  H1_M15   2R fixed          47.6%   2.00  +0.427   1.81   20150    1085
+  XAUUSD  H1_M15   3R fixed          40.6%   3.00  +0.622   2.05   20140     952
+  XAUUSD  H1_M15   4R fixed          37.7%   4.00  +0.885   2.42   20124     891
+  XAUUSD  H1_M15   short-term H/L    44.9%   2.01  +0.218   1.40    7346     468
+  XAUUSD  H1_M15   interm. H/L       43.3%   2.18  +0.237   1.42    8690     533
+  XAUUSD  H1_M15   liquidity pool    31.7%   3.88  +0.214   1.31    4029     249
+  XAUUSD  M15_M5   2R fixed          47.5%   2.00  +0.424   1.81   21168    1140
+  XAUUSD  M15_M5   3R fixed          44.1%   3.00  +0.766   2.37   21162    1042
+  XAUUSD  M15_M5   4R fixed          40.3%   4.00  +1.016   2.70   21151     945
+  XAUUSD  M15_M5   short-term H/L    46.0%   1.82  +0.241   1.45    7412     435
+  XAUUSD  M15_M5   interm. H/L       49.0%   1.83  +0.264   1.52    8962     563
+  XAUUSD  M15_M5   liquidity pool    33.5%   4.12  +0.195   1.29    3143     179
+  XAUUSD  H4_M15   2R fixed          46.4%   2.00  +0.393   1.73   20150    1049
+  XAUUSD  H4_M15   3R fixed          40.0%   3.00  +0.600   2.00   20140     975
+  XAUUSD  H4_M15   4R fixed          36.0%   4.00  +0.799   2.25   20124     920
+  XAUUSD  H4_M15   short-term H/L    43.7%   1.87  +0.169   1.30    7346     492
+  XAUUSD  H4_M15   interm. H/L       41.5%   2.07  +0.134   1.23    8690     547
+  XAUUSD  H4_M15   liquidity pool    32.7%   3.92  +0.251   1.37    4029     217
+
+------------------------------------------------------------------------------
+  TOP 15 MODELS by expectancy (R per trade)
+------------------------------------------------------------------------------
+    # pair    combo    TP                  expR     WR     PF
+    1 GBPUSD  H4_M15   4R fixed          +1.079  41.6%   2.85
+    2 GBPUSD  H4_H1    4R fixed          +1.035  40.7%   2.75
+    3 GBPUSD  H1_M15   4R fixed          +1.024  40.5%   2.72
+    4 XAUUSD  M15_M5   4R fixed          +1.016  40.3%   2.70
+    5 EURUSD  H4_M15   4R fixed          +0.965  39.3%   2.59
+    6 EURUSD  H4_H1    4R fixed          +0.944  38.9%   2.54
+    7 EURUSD  M15_M5   4R fixed          +0.898  38.0%   2.45
+    8 EURUSD  H1_M15   4R fixed          +0.889  37.8%   2.43
+    9 XAUUSD  H1_M15   4R fixed          +0.885  37.7%   2.42
+   10 XAUUSD  H4_H1    4R fixed          +0.862  37.2%   2.37
+   11 GBPUSD  M15_M5   4R fixed          +0.800  36.0%   2.25
+   12 XAUUSD  H4_M15   4R fixed          +0.799  36.0%   2.25
+   13 XAUUSD  M15_M5   3R fixed          +0.766  44.1%   2.37
+   14 GBPUSD  H4_H1    3R fixed          +0.747  43.7%   2.33
+   15 EURUSD  H4_H1    3R fixed          +0.700  42.5%   2.22
+
+------------------------------------------------------------------------------
+  TAKE-PROFIT TARGET RANKING (averaged over all pairs & timeframes)
+------------------------------------------------------------------------------
+  target            avg expR    worst     best
+  4R fixed            +0.933   +0.799   +1.079
+  3R fixed            +0.649   +0.496   +0.766
+  2R fixed            +0.365   +0.303   +0.427
+  interm. H/L         +0.102   -0.126   +0.264
+  short-term H/L      +0.100   -0.188   +0.241
+  liquidity pool      -0.037   -0.550   +0.349
+
+------------------------------------------------------------------------------
+  TIMEFRAME COMBO RANKING (averaged over all pairs & TP modes)
+------------------------------------------------------------------------------
+  combo       avg expR
+  H4_H1         +0.406
+  H1_M15        +0.338
+  M15_M5        +0.333
+  H4_M15        +0.332
+
+------------------------------------------------------------------------------
+  FIXED-RR ONLY: expectancy by RR level (the clean comparison)
+------------------------------------------------------------------------------
+  RR       avg WR  avg expR   avg PF
+  rr2       45.5%    +0.365     1.67
+  rr3       41.2%    +0.649     2.11
+  rr4       38.7%    +0.933     2.53
+
+------------------------------------------------------------------------------
+  BEST MODEL PER PAIR  +  its most important concept weights
+------------------------------------------------------------------------------
+
+  EURUSD:  H4_M15 / 4R fixed  ->  expR=+0.965  WR=39.3%  RR=4.0  PF=2.59
+     top 10 concept weights:
+       az_tier_protected        [atoz] +1.131  #############
+       fva_fresh                [mmc ] -0.480  #####
+       az_intermediate          [atoz] +0.422  #####
+       az_strength_weakness     [atoz] -0.382  ####
+       az_double_quadrant       [atoz] -0.361  ####
+       r_to_tp                  [mmc ] -0.360  ####
+       az_sweep                 [atoz] -0.354  ####
+       az_seek_destroy          [atoz] -0.353  ####
+       fvg_quality              [mmc ] -0.319  ###
+       run_detected             [mmc ] +0.311  ###
+
+  GBPUSD:  H4_M15 / 4R fixed  ->  expR=+1.079  WR=41.6%  RR=4.0  PF=2.85
+     top 10 concept weights:
+       az_tier_protected        [atoz] +1.168  ##############
+       r_to_tp                  [mmc ] -0.747  ########
+       az_london_setup          [atoz] -0.442  #####
+       fvg_quality              [mmc ] -0.425  #####
+       red_zone                 [mmc ] -0.420  #####
+       az_sweep                 [atoz] -0.393  ####
+       sweep_detected           [mmc ] -0.365  ####
+       az_intermediate          [atoz] +0.363  ####
+       run_detected             [mmc ] +0.327  ###
+       fva_fresh                [mmc ] +0.276  ###
+
+  XAUUSD:  M15_M5 / 4R fixed  ->  expR=+1.016  WR=40.3%  RR=4.0  PF=2.70
+     top 10 concept weights:
+       az_tier_protected        [atoz] +1.186  ##############
+       az_intermediate          [atoz] +0.541  ######
+       r_to_tp                  [mmc ] -0.439  #####
+       fvg_quality              [mmc ] -0.351  ####
+       az_seek_destroy          [atoz] -0.320  ###
+       run_detected             [mmc ] +0.298  ###
+       sweep_detected           [mmc ] -0.296  ###
+       az_london_setup          [atoz] -0.285  ###
+       az_st_present            [atoz] -0.272  ###
+       az_targets_opposing      [atoz] -0.268  ###
+
+==============================================================================
+  BOTTOM LINE
+==============================================================================
+  * Fixed 4R take-profit wins on every pair and timeframe.
+  * H4->M15 (swing bias + precise M15 entry) is the strongest combo.
+  * Structural (STH/ITH) and liquidity targets underperform fixed RR.
+  * fvg_quality / fva_fresh (mmc) + az_tier_protected (atoz) dominate weights.

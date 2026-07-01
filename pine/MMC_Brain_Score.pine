@@ -1,0 +1,336 @@
+//@version=6
+// =============================================================================
+//  MMC BRAIN SCORE  —  perceptron trade-quality filter + 4R target
+//  Ports the Python "brain v2" decision layer (mmc + atoz/ICT features) that was
+//  trained on 100k bars x 3 pairs x 4 timeframe combos x 6 take-profit targets.
+//
+//  WHAT IT DOES
+//  On each MITIGATED fair value gap (price taps back into a gap) it builds the
+//  same concept features the Python model saw, multiplies them by the LEARNED
+//  perceptron weights, squashes with a sigmoid to a 0-100% score, and — if the
+//  score clears your threshold — takes the trade with a FIXED 4R take-profit
+//  (the take-profit that won on every pair and timeframe in the study).
+//
+//  WHY 4R
+//    TP-target ranking (avg expectancy R/trade, all pairs & TFs):
+//      4R fixed +0.933 | 3R +0.649 | 2R +0.365 | ITH/ITL +0.10 | STH/STL +0.10
+//      | liquidity pool -0.037.  Fixed 4R was #1 in every one of the top-10 models.
+//
+//  HONEST SCOPE
+//    The Python model uses 55 features from the full mmc+atoz engines. Pine can
+//    faithfully reproduce the ~17 HIGHEST-WEIGHT ones (az_tier_protected — the
+//    dominant +1.13 signal — plus intermediate structure, sweep/run, dealing-
+//    range position, session timing, HTF bias, r-to-target). The baked-in
+//    weights ARE the real trained values for those features. Scores track the
+//    model's character (protected structure + internal run + 4R) but are an
+//    approximation, not bit-exact. Backtest before trading. Not financial advice.
+// =============================================================================
+
+strategy("MMC Brain Score", overlay = true, max_lines_count = 500,
+     max_labels_count = 500, max_boxes_count = 500,
+     default_qty_type = strategy.percent_of_equity, default_qty_value = 2,
+     initial_capital = 10000, commission_type = strategy.commission.percent,
+     commission_value = 0.002, calc_on_every_tick = false)
+
+// ----------------------------------------------------------------------------
+//  INPUTS
+// ----------------------------------------------------------------------------
+gMdl = "Model / weights"
+preset = input.string("GBPUSD (H4→M15)", "Weight preset (pair the model was trained on)",
+     options = ["EURUSD (H4→M15)", "GBPUSD (H4→M15)", "XAUUSD (M15→M5)"], group = gMdl,
+     tooltip = "Baked-in perceptron weights from that pair's best 4R model. Pick the pair you are trading.")
+threshold = input.float(0.45, "Take-trade threshold (score ≥)", minval = 0.30, maxval = 0.90,
+     step = 0.01, group = gMdl,
+     tooltip = "The Pine port scores a touch cooler than the Python model, so 0.45 ≈ the model's 0.50 operating point. Raise toward 0.55-0.60 for fewer, higher-quality trades.")
+
+gTr = "Trade"
+rrTarget = input.float(4.0, "Reward:risk take-profit (R)", minval = 1.0, maxval = 8.0, step = 0.5, group = gTr,
+     tooltip = "4R won on every pair/timeframe. Lower it only to raise win rate at the cost of expectancy.")
+slBufAtr = input.float(0.1, "Stop buffer (× ATR beyond the gap)", minval = 0.0, maxval = 1.0, step = 0.05, group = gTr)
+maxHold  = input.int(200, "Max bars to hold", minval = 20, maxval = 1000, group = gTr)
+tradeDir = input.string("Both", "Trade direction", options = ["Both","Long only","Short only"], group = gTr)
+
+gStr = "Structure"
+pivLen = input.int(5, "Swing pivot length", minval = 2, maxval = 30, group = gStr)
+drLen  = input.int(60, "Dealing-range lookback (bars)", minval = 20, maxval = 300, group = gStr)
+
+gBias = "Higher-timeframe bias"
+htfBias = input.timeframe("240", "HTF for bias (FVG direction)", group = gBias,
+     tooltip = "The model reads daily bias from the timeframe above the entry TF. 240 = H4.")
+
+gSess = "Session windows (exchange time, hour of day)"
+sbFrom  = input.int(10, "Silver-bullet start hour", minval = 0, maxval = 23, group = gSess)
+sbTo    = input.int(11, "Silver-bullet end hour",   minval = 0, maxval = 23, group = gSess)
+lnFrom  = input.int(2,  "London KZ start hour", minval = 0, maxval = 23, group = gSess)
+lnTo    = input.int(5,  "London KZ end hour",   minval = 0, maxval = 23, group = gSess)
+nyFrom  = input.int(7,  "New York KZ start hour", minval = 0, maxval = 23, group = gSess)
+nyTo    = input.int(10, "New York KZ end hour",   minval = 0, maxval = 23, group = gSess)
+
+gViz = "Visuals"
+showFvg   = input.bool(true,  "Draw setup FVG boxes", group = gViz)
+showLvls  = input.bool(true,  "Draw entry / SL / TP lines", group = gViz)
+showScore = input.bool(true,  "Label each setup's score", group = gViz)
+showDash  = input.bool(true,  "Show dashboard", group = gViz)
+cLong  = input.color(color.new(#1D9E75, 0), "Long",  group = gViz)
+cShort = input.color(color.new(#E0524A, 0), "Short", group = gViz)
+cSkip  = input.color(color.new(color.gray, 40), "Skipped", group = gViz)
+
+// ----------------------------------------------------------------------------
+//  LEARNED PERCEPTRON WEIGHTS  (real trained values, best 4R model per pair)
+//  order: bias, fvg_quality, fva_fresh, tier_protected, intermediate, run,
+//         sweep, in_ote, in_premium, in_discount, silver_bullet, london, ny,
+//         mmxm_bias, mmxm_bias_match, r_to_tp, sharp_turn, ob_present
+// ----------------------------------------------------------------------------
+var float wBias=0., wQual=0., wFresh=0., wTier=0., wInterm=0., wRun=0., wSweep=0.
+var float wOte=0., wPrem=0., wDisc=0., wSB=0., wLon=0., wNY=0., wBias2=0., wMatch=0.
+var float wRtp=0., wSharp=0., wOB=0.
+if barstate.isfirst
+    if preset == "EURUSD (H4→M15)"
+        wBias := -0.0077, wQual := -0.3186, wFresh := -0.4799, wTier := 1.1306
+        wInterm := 0.4221, wRun := 0.1214, wSweep := -0.3541, wOte := -0.2266
+        wPrem := -0.0156, wDisc := -0.0867, wSB := 0.0118, wLon := -0.0661
+        wNY := -0.2257, wBias2 := -0.0333, wMatch := 0.0111, wRtp := -0.3596
+        wSharp := 0.0616, wOB := -0.1545
+    else if preset == "GBPUSD (H4→M15)"
+        wBias := -0.0426, wQual := -0.4248, wFresh := 0.2761, wTier := 1.1683
+        wInterm := 0.3629, wRun := 0.1794, wSweep := -0.3927, wOte := -0.0776
+        wPrem := -0.1918, wDisc := -0.2158, wSB := 0.1051, wLon := -0.4425
+        wNY := 0.0013, wBias2 := 0.0162, wMatch := -0.0217, wRtp := -0.7473
+        wSharp := -0.0334, wOB := -0.1689
+    else
+        wBias := -0.0627, wQual := -0.3513, wFresh := -0.1536, wTier := 1.1861
+        wInterm := 0.5414, wRun := 0.1075, wSweep := -0.2257, wOte := -0.1218
+        wPrem := 0.1146, wDisc := 0.1185, wSB := -0.2318, wLon := -0.2854
+        wNY := -0.0072, wBias2 := -0.0594, wMatch := 0.0202, wRtp := -0.4393
+        wSharp := -0.0141, wOB := -0.0459
+
+// ----------------------------------------------------------------------------
+//  PRIMITIVES
+// ----------------------------------------------------------------------------
+atr = ta.atr(14)
+
+// swing pivots
+ph = ta.pivothigh(pivLen, pivLen)
+pl = ta.pivotlow (pivLen, pivLen)
+var float lastPH = na, var int lastPHi = na
+var float prevPH = na
+var float lastPL = na, var int lastPLi = na
+var float prevPL = na
+if not na(ph)
+    prevPH := lastPH, lastPH := ph, lastPHi := bar_index - pivLen
+if not na(pl)
+    prevPL := lastPL, lastPL := pl, lastPLi := bar_index - pivLen
+
+// dealing range over the lookback
+drHigh = ta.highest(high, drLen)
+drLow  = ta.lowest(low, drLen)
+drRng  = math.max(drHigh - drLow, syminfo.mintick)
+
+// HTF bias: sign of the most recent HTF fair value gap (bull = +1, bear = -1)
+htfHigh2 = request.security(syminfo.tickerid, htfBias, high[2], lookahead = barmerge.lookahead_off)
+htfLow0  = request.security(syminfo.tickerid, htfBias, low,     lookahead = barmerge.lookahead_off)
+htfLow2  = request.security(syminfo.tickerid, htfBias, low[2],  lookahead = barmerge.lookahead_off)
+htfHigh0 = request.security(syminfo.tickerid, htfBias, high,    lookahead = barmerge.lookahead_off)
+htfBull  = htfLow0  > htfHigh2      // bullish FVG on HTF (gap up)
+htfBear  = htfHigh0 < htfLow2       // bearish FVG on HTF (gap down)
+htfSign  = htfBull ? 1.0 : htfBear ? -1.0 : 0.0
+
+hr = hour
+inSB  = hr >= sbFrom and hr < sbTo
+inLon = hr >= lnFrom and hr < lnTo
+inNY  = hr >= nyFrom and hr < nyTo
+
+// ----------------------------------------------------------------------------
+//  FVG DETECTION + MITIGATION  (3-candle gap; trade on first tap back)
+// ----------------------------------------------------------------------------
+// bullish FVG: high[2] < low[0]  → gap = [high[2], low[0]]
+// bearish FVG: low[2]  > high[0] → gap = [high[0], low[2]]
+bullFvg = high[2] < low[0]
+bearFvg = low[2]  > high[0]
+
+// track unmitigated gaps in arrays; also STORE the impulse-origin features at
+// formation time (they describe the move that CREATED the gap, so they must be
+// captured now — you cannot look back to them with a negative offset at the tap).
+var array<float> gTop = array.new_float()
+var array<float> gBot = array.new_float()
+var array<int>   gDir = array.new_int()      // 1 long, -1 short
+var array<int>   gBar = array.new_int()
+var array<float> gQual  = array.new_float()  // fvg_quality (gap size / ATR)
+var array<int>   gSwept = array.new_int()    // 1 if the impulse swept a prior swing
+var array<float> gOB    = array.new_float()  // order block before the impulse
+var array<float> gSharp = array.new_float()  // sharp v-turn into the gap
+
+if bullFvg
+    q  = math.min((low[0] - high[2]) / math.max(atr, syminfo.mintick), 1.0)
+    sw = (not na(prevPL) and math.min(low[1], low[2]) < prevPL) ? 1 : 0
+    ob = close[3] < open[3] ? 1.0 : 0.0
+    sh = (low[1] < low[3] and close > open) ? 1.0 : 0.0
+    array.push(gTop, low[0]), array.push(gBot, high[2]), array.push(gDir, 1), array.push(gBar, bar_index)
+    array.push(gQual, q), array.push(gSwept, sw), array.push(gOB, ob), array.push(gSharp, sh)
+if bearFvg
+    q  = math.min((low[2] - high[0]) / math.max(atr, syminfo.mintick), 1.0)
+    sw = (not na(prevPH) and math.max(high[1], high[2]) > prevPH) ? 1 : 0
+    ob = close[3] > open[3] ? 1.0 : 0.0
+    sh = (high[1] > high[3] and close < open) ? 1.0 : 0.0
+    array.push(gTop, low[2]), array.push(gBot, high[0]), array.push(gDir, -1), array.push(gBar, bar_index)
+    array.push(gQual, q), array.push(gSwept, sw), array.push(gOB, ob), array.push(gSharp, sh)
+
+// a setup fires this bar if price taps an existing gap for the first time
+var bool   sigActive = false
+var int    sigDir    = 0
+var float  sigEntry  = na
+var float  sigStop   = na
+var float  sigTP     = na
+var float  sigScore  = na
+sigActive := false
+
+// helper: nearest opposing swing distance in R (for r_to_tp), normalized
+f_rtp(_dir, _entry, _risk) =>
+    float tgt = _dir == 1 ? lastPH : lastPL
+    float d = na(tgt) ? 2.0 : math.abs(tgt - _entry) / math.max(_risk, syminfo.mintick)
+    math.min(d, 10.0) / 10.0
+
+if array.size(gTop) > 0
+    for i = array.size(gTop) - 1 to 0
+        gt = array.get(gTop, i)
+        gb = array.get(gBot, i)
+        gd = array.get(gDir, i)
+        gbar = array.get(gBar, i)
+        tapped = low <= gt and high >= gb and bar_index > gbar
+        if tapped
+            dirOk = (gd == 1 and tradeDir != "Short only") or (gd == -1 and tradeDir != "Long only")
+            if dirOk and not sigActive
+                buf = atr * slBufAtr
+                entry = gd == 1 ? gt : gb
+                stop  = gd == 1 ? gb - buf : gt + buf
+                risk  = math.abs(entry - stop)
+                if risk > 0
+                    // ------- FORMATION-time features (stored at creation) -------
+                    qual   = array.get(gQual, i)
+                    fresh  = 1.0                        // first tap of this gap
+                    swept  = array.get(gSwept, i) == 1
+                    runF   = swept ? 0.0 : 1.0          // FVG-in-leg internal run
+                    sweepF = swept ? 1.0 : 0.0          // external liquidity sweep
+                    obp    = array.get(gOB, i)
+                    sharp  = array.get(gSharp, i)
+
+                    // ------- TAP-time (location) features -----------------------
+                    // tier_protected (atoz ep32): the swing that anchors the leg is
+                    // still protected — for a long, a swing low sits below entry and
+                    // price has not closed back below it; mirror for a short.
+                    tier = gd == 1 ? (not na(lastPL) and lastPL < entry and close > lastPL ? 1.0 : 0.0) : (not na(lastPH) and lastPH > entry and close < lastPH ? 1.0 : 0.0)
+                    // intermediate: sits at an ITH/ITL (higher low / lower high either side)
+                    interm = gd == 1 ? (not na(prevPL) and not na(lastPL) and lastPL > prevPL ? 1.0 : 0.0) : (not na(prevPH) and not na(lastPH) and lastPH < prevPH ? 1.0 : 0.0)
+                    // dealing-range position
+                    pos = (entry - drLow) / drRng            // 0 bottom .. 1 top
+                    inPrem = pos > 0.5 ? 1.0 : 0.0
+                    inDisc = pos < 0.5 ? 1.0 : 0.0
+                    otePos = gd == 1 ? pos : 1.0 - pos
+                    inOte = (otePos >= 0.21 and otePos <= 0.38) ? 1.0 : 0.0
+                    // session flags
+                    sb  = inSB  ? 1.0 : 0.0
+                    lon = inLon ? 1.0 : 0.0
+                    ny  = inNY  ? 1.0 : 0.0
+                    // HTF bias + match
+                    biasV = htfSign
+                    matchV = (gd == 1 and htfSign > 0) or (gd == -1 and htfSign < 0) ? 1.0 : 0.0
+                    // r_to_tp (nearest opposing swing distance, normalized)
+                    rtp = f_rtp(gd, entry, risk)
+
+                    // ---------------- PERCEPTRON SCORE --------------------------
+                    z = wBias + wQual*qual + wFresh*fresh + wTier*tier + wInterm*interm + wRun*runF + wSweep*sweepF + wOte*inOte + wPrem*inPrem + wDisc*inDisc + wSB*sb + wLon*lon + wNY*ny + wBias2*biasV + wMatch*matchV + wRtp*rtp + wSharp*sharp + wOB*obp
+                    score = 1.0 / (1.0 + math.exp(-z))
+
+                    sigActive := true
+                    sigDir    := gd
+                    sigEntry  := entry
+                    sigStop   := stop
+                    sigTP     := gd == 1 ? entry + rrTarget * risk : entry - rrTarget * risk
+                    sigScore  := score
+
+            // remove the tapped gap (only traded once) — keep all arrays in sync
+            array.remove(gTop, i), array.remove(gBot, i), array.remove(gDir, i), array.remove(gBar, i)
+            array.remove(gQual, i), array.remove(gSwept, i), array.remove(gOB, i), array.remove(gSharp, i)
+
+// prune very old untapped gaps to keep arrays small
+if array.size(gBar) > 400
+    array.shift(gTop), array.shift(gBot), array.shift(gDir), array.shift(gBar)
+    array.shift(gQual), array.shift(gSwept), array.shift(gOB), array.shift(gSharp)
+
+// ----------------------------------------------------------------------------
+//  EXECUTION  (backtest on the Strategy Tester) + LIVE ALERTS
+// ----------------------------------------------------------------------------
+takeIt   = sigActive and sigScore >= threshold
+tradeLen = input.bool(true, "Run the backtest engine (uncheck for pure alert mode)",
+     group = "Trade")
+
+if takeIt and tradeLen
+    if sigDir == 1
+        strategy.entry("L", strategy.long)
+        strategy.exit("Lx", "L", stop = sigStop, limit = sigTP)
+    else
+        strategy.entry("S", strategy.short)
+        strategy.exit("Sx", "S", stop = sigStop, limit = sigTP)
+
+// time-based flat (max hold)
+if tradeLen and strategy.position_size != 0 and (bar_index - strategy.opentrades.entry_bar_index(strategy.opentrades - 1)) >= maxHold
+    strategy.close_all("timeout")
+
+// ---- ALERTS ---------------------------------------------------------------
+// One dynamic alert per qualifying setup. In TradingView: "Add alert" ->
+// condition = this strategy -> "Any alert() function call".  You get the
+// direction, score, entry, stop and 4R target in the message.
+if takeIt
+    dirTxt = sigDir == 1 ? "LONG" : "SHORT"
+    msg = "MMC BRAIN " + dirTxt + " " + syminfo.ticker
+       + " | score " + str.tostring(math.round(sigScore * 100)) + "%"
+       + " | entry " + str.tostring(sigEntry, format.mintick)
+       + " | SL " + str.tostring(sigStop, format.mintick)
+       + " | TP(" + str.tostring(rrTarget) + "R) " + str.tostring(sigTP, format.mintick)
+    alert(msg, alert.freq_once_per_bar_close)
+
+// static alertcondition() options too (so you can pick Long-only / Short-only)
+alertcondition(takeIt and sigDir == 1,  "MMC Brain — LONG setup",  "MMC Brain long setup passed threshold")
+alertcondition(takeIt and sigDir == -1, "MMC Brain — SHORT setup", "MMC Brain short setup passed threshold")
+
+// ----------------------------------------------------------------------------
+//  VISUALS
+// ----------------------------------------------------------------------------
+if showFvg and sigActive
+    col = sigScore >= threshold ? (sigDir == 1 ? cLong : cShort) : cSkip
+    box.new(bar_index, sigEntry, bar_index + 1, sigStop, border_color = col,
+         bgcolor = color.new(col, 82))
+
+if showLvls and takeIt
+    line.new(bar_index, sigEntry, bar_index + 30, sigEntry, color = color.blue, width = 1)
+    line.new(bar_index, sigStop,  bar_index + 30, sigStop,  color = color.red,  style = line.style_dashed)
+    line.new(bar_index, sigTP,    bar_index + 30, sigTP,    color = color.green, style = line.style_dashed)
+
+if showScore and sigActive
+    txt = str.tostring(math.round(sigScore * 100)) + "%"
+    lc  = sigScore >= threshold ? (sigDir == 1 ? cLong : cShort) : cSkip
+    ystyle = sigDir == 1 ? label.style_label_up : label.style_label_down
+    label.new(bar_index, sigDir == 1 ? sigStop : sigTP, txt, color = lc,
+         textcolor = color.white, style = ystyle, size = size.small)
+
+// ----------------------------------------------------------------------------
+//  DASHBOARD
+// ----------------------------------------------------------------------------
+f_cell(_t, _c, _r, _txt, _col) =>
+    table.cell(_t, _c, _r, _txt, text_size = size.small, text_color = _col,
+         text_halign = _c == 0 ? text.align_left : text.align_right)
+
+if showDash and barstate.islast
+    var table t = table.new(position.top_right, 2, 8, border_width = 1)
+    netR = strategy.netprofit / (strategy.initial_capital * 0.02)
+    wr = strategy.closedtrades > 0 ? 100.0 * strategy.wintrades / strategy.closedtrades : 0.0
+    pf = strategy.grossloss != 0 ? strategy.grossprofit / math.abs(strategy.grossloss) : 0.0
+    table.cell(t, 0, 0, "MMC BRAIN SCORE", text_size = size.normal, text_color = color.white, text_halign = text.align_left)
+    table.cell(t, 1, 0, "", text_size = size.normal)
+    f_cell(t, 0, 1, "Preset", color.gray),        f_cell(t, 1, 1, preset, color.white)
+    f_cell(t, 0, 2, "Threshold", color.gray),     f_cell(t, 1, 2, str.tostring(threshold), color.white)
+    f_cell(t, 0, 3, "Target", color.gray),        f_cell(t, 1, 3, str.tostring(rrTarget) + "R", color.white)
+    f_cell(t, 0, 4, "Trades", color.gray),        f_cell(t, 1, 4, str.tostring(strategy.closedtrades), color.white)
+    f_cell(t, 0, 5, "Win rate", color.gray),      f_cell(t, 1, 5, str.tostring(math.round(wr, 1)) + "%", color.white)
+    f_cell(t, 0, 6, "Profit factor", color.gray), f_cell(t, 1, 6, str.tostring(math.round(pf, 2)), color.white)
+    f_cell(t, 0, 7, "Net (R units)", color.gray), f_cell(t, 1, 7, str.tostring(math.round(netR, 1)) + "R", color.white)

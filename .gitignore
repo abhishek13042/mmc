@@ -32,6 +32,10 @@ mmc/brain/weights/_cache/
 mmc/brain/weights/_pid.txt
 mmc/brain/weights/_manifest.json
 
+# Live robot runtime state (regenerated on each run, not source)
+mmc/brain/weights/_robot_pid.txt
+mmc/brain/weights/_fleet_state.json
+
 # Scratch / run outputs
 out_*.txt
 batch_log*.txt

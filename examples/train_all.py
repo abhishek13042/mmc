@@ -34,9 +34,14 @@ sys.path.insert(0, "D:/MMC")
 import numpy as np
 import torch
 
-# pin CPU threads (i3: use all logical cores)
+# CPU threads — gentle by default so a thin 2-core laptop stays cool/quiet.
+# Override with env BRAIN_THREADS; default = half the logical cores (min 1).
 try:
-    torch.set_num_threads(max(1, multiprocessing.cpu_count()))
+    _default_threads = max(1, multiprocessing.cpu_count() // 2)
+    _n_threads = int(os.environ.get("BRAIN_THREADS", _default_threads))
+    torch.set_num_threads(max(1, _n_threads))
+    os.environ.setdefault("OMP_NUM_THREADS", str(_n_threads))
+    os.environ.setdefault("MKL_NUM_THREADS", str(_n_threads))
 except Exception:
     pass
 
